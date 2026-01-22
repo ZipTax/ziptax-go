@@ -47,7 +47,7 @@ func TestClient_GetSalesTaxByAddress(t *testing.T) {
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{
+			_, _ = w.Write([]byte(`{
 				"metadata": {
 					"version": "v60",
 					"response": {
@@ -99,7 +99,7 @@ func TestClient_GetSalesTaxByAddress(t *testing.T) {
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{
+			_, _ = w.Write([]byte(`{
 				"metadata": {
 					"version": "v60",
 					"response": {
@@ -195,7 +195,7 @@ func TestClient_GetSalesTaxByGeoLocation(t *testing.T) {
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{
+			_, _ = w.Write([]byte(`{
 				"metadata": {
 					"version": "v60",
 					"response": {
@@ -255,7 +255,7 @@ func TestClient_GetAccountMetrics(t *testing.T) {
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{
+			_, _ = w.Write([]byte(`{
 				"core_request_count": 15595,
 				"core_request_limit": 1000000,
 				"core_usage_percent": 1.5595,

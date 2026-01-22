@@ -39,7 +39,7 @@ func TestClient_Get(t *testing.T) {
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"message":"success"}`))
+			_, _ = w.Write([]byte(`{"message":"success"}`))
 		}))
 		defer server.Close()
 
@@ -61,7 +61,7 @@ func TestClient_Get(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(`{
+			_, _ = w.Write([]byte(`{
 				"metadata": {
 					"response": {
 						"code": 400,

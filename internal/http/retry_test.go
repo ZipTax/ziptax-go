@@ -95,7 +95,7 @@ func TestDoWithRetry(t *testing.T) {
 	t.Run("success on first attempt", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"status":"ok"}`))
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
 		}))
 		defer server.Close()
 
@@ -109,7 +109,7 @@ func TestDoWithRetry(t *testing.T) {
 		resp, err := DoWithRetry(ctx, client, req, policy)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	})
 
 	t.Run("retry on 500 error", func(t *testing.T) {
@@ -121,7 +121,7 @@ func TestDoWithRetry(t *testing.T) {
 				return
 			}
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"status":"ok"}`))
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
 		}))
 		defer server.Close()
 
@@ -136,7 +136,7 @@ func TestDoWithRetry(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Equal(t, 3, attempts)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	})
 
 	t.Run("context cancellation", func(t *testing.T) {

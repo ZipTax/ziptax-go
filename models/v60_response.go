@@ -2,13 +2,13 @@ package models
 
 // V60Response represents the main response structure for v6.0 API.
 type V60Response struct {
-	Metadata       V60Metadata       `json:"metadata"`
-	BaseRates      []V60BaseRate     `json:"baseRates,omitempty"`
-	Service        V60Service        `json:"service"`
-	Shipping       V60Shipping       `json:"shipping"`
-	SourcingRules  *V60SourcingRules `json:"sourcingRules,omitempty"`
-	TaxSummaries   []V60TaxSummary   `json:"taxSummaries,omitempty"`
-	AddressDetail  V60AddressDetail  `json:"addressDetail"`
+	Metadata      V60Metadata       `json:"metadata"`
+	BaseRates     []V60BaseRate     `json:"baseRates,omitempty"`
+	Service       V60Service        `json:"service"`
+	Shipping      V60Shipping       `json:"shipping"`
+	SourcingRules *V60SourcingRules `json:"sourcingRules,omitempty"`
+	TaxSummaries  []V60TaxSummary   `json:"taxSummaries,omitempty"`
+	AddressDetail V60AddressDetail  `json:"addressDetail"`
 }
 
 // V60Metadata contains metadata about the API response.

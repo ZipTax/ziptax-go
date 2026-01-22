@@ -10,11 +10,11 @@ import (
 
 // RetryPolicy defines the retry configuration.
 type RetryPolicy struct {
-	MaxRetries   int
-	MinWait      time.Duration
-	MaxWait      time.Duration
-	CheckRetry   func(*http.Response, error) bool
-	Backoff      func(attempt int, min, max time.Duration) time.Duration
+	MaxRetries int
+	MinWait    time.Duration
+	MaxWait    time.Duration
+	CheckRetry func(*http.Response, error) bool
+	Backoff    func(attempt int, min, max time.Duration) time.Duration
 }
 
 // DefaultRetryPolicy returns the default retry policy.
@@ -81,7 +81,7 @@ func DoWithRetry(ctx context.Context, client *http.Client, req *http.Request, po
 		if attempt < policy.MaxRetries && policy.CheckRetry(resp, err) {
 			// Close response body if present
 			if resp != nil {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 			}
 
 			// Calculate backoff

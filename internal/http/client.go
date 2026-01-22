@@ -73,7 +73,7 @@ func (c *Client) Get(ctx context.Context, path string, queryParams map[string]st
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Log response if logger is available
 	if c.Logger != nil {
