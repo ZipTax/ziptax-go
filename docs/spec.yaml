@@ -112,9 +112,9 @@ resources:
             format: "number"
             required: false
             location: "query"
-            description: "Historical date for rates (YYYY-MM format)"
+            description: "Taxability Code (product or service code)"
             validation:
-              pattern: "^[0-9]$"
+              pattern: "^[0-9]+$"
           - name: "countryCode"
             type: "string"
             required: false
