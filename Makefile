@@ -10,8 +10,8 @@ test: ## Run tests
 test-verbose: ## Run tests with verbose output
 	go test -v ./...
 
-test-coverage: ## Run tests with coverage report
-	go test -coverprofile=coverage.out ./...
+test-coverage: ## Run tests with coverage report (excluding examples)
+	go test -coverprofile=coverage.out $$(go list ./... | grep -v /examples/)
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
 	go tool cover -func=coverage.out | grep total
