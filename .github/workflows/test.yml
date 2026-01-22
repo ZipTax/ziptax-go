@@ -44,19 +44,23 @@ jobs:
         run: go vet ./...
 
       - name: Run tests
+        shell: bash
         run: go test -v -race -coverprofile=coverage.out $(go list ./... | grep -v /examples/)
 
       - name: Generate coverage report
         run: go tool cover -func=coverage.out
 
       - name: Check coverage threshold
+        shell: bash
         run: |
           COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
           echo "Total coverage: ${COVERAGE}%"
-          if (( $(echo "$COVERAGE < 80" | bc -l) )); then
-            echo "Coverage ${COVERAGE}% is below threshold of 80%"
+          THRESHOLD=80
+          if awk "BEGIN {exit !($COVERAGE < $THRESHOLD)}"; then
+            echo "Coverage ${COVERAGE}% is below threshold of ${THRESHOLD}%"
             exit 1
           fi
+          echo "Coverage check passed!"
 
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.23'
