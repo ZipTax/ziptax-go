@@ -1,0 +1,1073 @@
+# =============================================================================
+# SDK Generation Template for ZipTax API
+# =============================================================================
+# This template provides a comprehensive spec for codegen agents
+
+# -----------------------------------------------------------------------------
+# Project Metadata
+# -----------------------------------------------------------------------------
+project:
+  name: "ziptax-go"
+  language: "go"
+  version: "1.0.0"
+  description: "Official Go SDK for the ZipTax API"
+  module_path: "github.com/ziptax/ziptax-go"
+  minimum_go_version: "1.21"
+
+  # Repository information
+  repository:
+    url: "https://github.com/ziptax/ziptax-go"
+    type: "git"
+
+  # License
+  license: "MIT"
+
+  # Maintainer information
+  maintainers:
+    - name: "ZipTax Team"
+      email: "support@zip.tax"
+
+# -----------------------------------------------------------------------------
+# API Configuration
+# -----------------------------------------------------------------------------
+api:
+  # Base API details
+  name: "ZipTax API"
+  version: "v60"
+  base_url: "https://api.zip-tax.com/"
+
+  # API specification source
+  spec:
+    type: "openapi"
+    version: "3.0.0"
+    source: "https://api.zip-tax.com/openapi.json"
+
+  # Authentication methods
+  authentication:
+    type: "api_key"
+    location: "header"
+    parameter_name: "X-API-Key"
+
+    # Additional auth configurations
+    supports_multiple_methods: false
+    methods: []
+
+# -----------------------------------------------------------------------------
+# SDK Configuration
+# -----------------------------------------------------------------------------
+sdk:
+  # Package/module naming
+  package_name: "ziptax"
+  namespace: "Ziptax"
+
+  # SDK structure approach
+  structure:
+    type: "client-based"
+    client_struct: "Client"        # Go uses structs, not classes
+
+  # Features to include
+  features:
+    concurrency_support: true      # Include goroutines/channels for concurrent operations
+    context_support: true          # Use context.Context for cancellation and timeouts
+    retry_logic: true              # Automatic retry on failures with exponential backoff
+    request_logging: true          # Built-in request/response logging
+    response_caching: false        # Cache responses
+    pagination_helpers: true       # Helper methods for paginated endpoints
+    batch_operations: false        # Batch request support
+    webhooks: false                # Webhook handling utilities
+
+  # Error handling
+  error_handling:
+    use_custom_errors: true        # Go uses errors, not exceptions
+    error_wrapping: true           # Use fmt.Errorf with %w for error chains
+    sentinel_errors: true          # Define sentinel errors (e.g., ErrInvalidAPIKey)
+    include_retry_errors: true
+
+  # Type safety
+  type_safety:
+    use_strict_types: true         # Go is statically typed
+    validate_inputs: true          # Runtime input validation
+    use_interfaces: true           # Define interfaces for extensibility
+
+# -----------------------------------------------------------------------------
+# API Endpoints & Resources
+# -----------------------------------------------------------------------------
+# Define the API structure and endpoints to implement
+resources:
+      - name: "GetSalesTaxByAddress"
+        http_method: "GET"
+        path: "/request/v60/"
+        description: "Returns sales and use tax rate details from an address input."
+        operation_id: "getTaxRatesV60"
+        parameters:
+          - name: "address"
+            type: "string"
+            required: true
+            location: "query"
+            description: "Full or partial street address for geocoding"
+            validation:
+              max_length: 100
+          - name: "taxabilityCode"
+            type: "string"
+            format: "number"
+            required: false
+            location: "query"
+            description: "Taxability Code (product or service code)"
+            validation:
+              pattern: "^[0-9]+$"
+          - name: "countryCode"
+            type: "string"
+            required: false
+            location: "query"
+            description: "Country code"
+            default: "USA"
+            enum: ["USA", "CAN"]
+          - name: "historical"
+            type: "string"
+            format: "date"
+            required: false
+            location: "query"
+            description: "Historical date for rates (YYYY-MM format)"
+            validation:
+              pattern: "^[0-9]{4}-[0-9]{2}$"
+          - name: "format"
+            type: "string"
+            required: false
+            location: "query"
+            description: "Response format"
+            default: "json"
+            enum: ["json", "xml"]
+        returns:
+          type: "V60Response"
+          is_array: false
+      - name: "GetSalesTaxByGeoLocation"
+        http_method: "GET"
+        path: "/request/v60/"
+        description: "Returns sales and use tax rate details from a geolocation input."
+        operation_id: "getTaxRatesV60"
+        parameters:
+          - name: "lat"
+            type: "string"
+            required: true
+            location: "query"
+            description: "Latitude for geolocation"
+            validation:
+              max_length: 100
+          - name: "lng"
+            type: "string"
+            required: true
+            location: "query"
+            description: "Longitude for geolocation"
+            validation:
+              max_length: 100
+          - name: "countryCode"
+            type: "string"
+            required: false
+            location: "query"
+            description: "Country code"
+            default: "USA"
+            enum: ["USA", "CAN"]
+          - name: "historical"
+            type: "string"
+            format: "date"
+            required: false
+            location: "query"
+            description: "Historical date for rates (YYYY-MM format)"
+            validation:
+              pattern: "^[0-9]{4}-[0-9]{2}$"
+          - name: "format"
+            type: "string"
+            required: false
+            location: "query"
+            description: "Response format"
+            default: "json"
+            enum: ["json", "xml"]
+        returns:
+          type: "V60Response"
+          is_array: false
+      - name: "GetAccountMetrics"
+        http_method: "GET"
+        path: "/account/v60/metrics"
+        description: "Returns account metrics related to sales and use tax."
+        operation_id: "getAccountMetricsV60"
+        parameters:
+          - name: "key"
+            type: "string"
+            required: false
+            location: "query"
+            description: "Response format"
+            default: "json"
+            enum: ["json", "xml"]
+        returns:
+          type: "V60AccountMetrics"
+          is_array: false
+          
+# -----------------------------------------------------------------------------
+# Data Models
+# -----------------------------------------------------------------------------
+# Define the data structures/models used in the API
+#
+# IMPORTANT IMPLEMENTATION NOTES FOR GO:
+# 1. Use Go structs with JSON tags for marshaling/unmarshaling
+# 2. API returns camelCase fields - use json tags to map to Go's PascalCase fields
+# 3. Many fields are OPTIONAL in real responses - use pointers (*string, *float64) for optional fields
+# 4. Jurisdiction names (jurName) contain actual values like "CA", "ORANGE" - NOT enums
+# 5. Use float64 for decimal/float values, int64 for integers, string for strings
+# 6. Use omitempty tag for optional fields: `json:"fieldName,omitempty"`
+# 7. Add JSON validation tags or use custom UnmarshalJSON when needed
+# 8. See "actual_api_responses" section below for real response structures
+models:
+  # ---------------------------------------------------------------------------
+  # API Version 6.0 Models (Latest)
+  # ---------------------------------------------------------------------------
+  - name: "V60Response"
+    description: "Response for v6.0 API - structured format with separate components"
+    properties:
+      - name: "metadata"
+        type: "V60Metadata"
+        required: true
+        description: "Response metadata"
+      - name: "base_rates"
+        type: "array"
+        items_type: "V60BaseRate"
+        required: false  # Can be null/missing
+        api_field: "baseRates"  # API uses camelCase
+        description: "Base tax rates by jurisdiction"
+      - name: "service"
+        type: "V60Service"
+        required: true
+        description: "Service taxability information"
+      - name: "shipping"
+        type: "V60Shipping"
+        required: true
+        description: "Shipping taxability information"
+      - name: "sourcing_rules"
+        type: "V60SourcingRules"
+        required: false  # Can be null/missing
+        api_field: "sourcingRules"  # IMPORTANT: API field is 'sourcingRules' not 'originDestination'
+        description: "Sourcing rules (origin vs destination)"
+      - name: "tax_summaries"
+        type: "array"
+        items_type: "V60TaxSummary"
+        required: false  # Can be null/missing
+        api_field: "taxSummaries"  # API uses camelCase
+        description: "Tax rate summaries"
+      - name: "addressDetail"
+        type: "V60AddressDetail"
+        required: true
+        api_field: "addressDetail"  # API keeps this as camelCase (no snake_case conversion)
+        description: "Address details"
+
+  - name: "V60Metadata"
+    description: "Metadata for v6.0 response"
+    properties:
+      - name: "version"
+        type: "string"
+        required: true
+        description: "API version"
+        example: "v60"
+      - name: "response"
+        type: "V60ResponseInfo"
+        required: true
+        description: "Response information (NESTED OBJECT - not flat)"
+
+  - name: "V60ResponseInfo"
+    description: "Response information nested in metadata"
+    properties:
+      - name: "code"
+        type: "integer"
+        format: "int64"
+        required: true
+        description: "Response code (100=success)"
+        example: 100
+      - name: "name"
+        type: "string"
+        required: true
+        description: "Response code name"
+        example: "RESPONSE_CODE_SUCCESS"
+      - name: "message"
+        type: "string"
+        required: true
+        description: "Response message"
+        example: "Successful API Request."
+      - name: "definition"
+        type: "string"
+        required: true
+        description: "Schema definition URL"
+        example: "http://api.zip-tax.com/request/v60/schema"
+
+  - name: "V60BaseRate"
+    description: "Base tax rate for a specific jurisdiction"
+    properties:
+      - name: "rate"
+        type: "number"
+        format: "float"
+        required: true
+        description: "Tax rate (decimal format, e.g., 0.0775 for 7.75%)"
+      - name: "rate_id"
+        type: "string"
+        required: false  # OPTIONAL in real API responses
+        api_field: "rateId"  # API uses camelCase
+        description: "Rate identifier from tax table"
+      - name: "jur_type"
+        type: "string"  # STRING not enum - API may return various types
+        required: true
+        api_field: "jurType"  # API uses camelCase
+        description: "Jurisdiction type (e.g., US_STATE_SALES_TAX, US_COUNTY_SALES_TAX)"
+        example: "US_STATE_SALES_TAX"
+      - name: "jur_name"
+        type: "string"  # STRING not enum - contains actual names like "CA", "ORANGE"
+        required: true
+        api_field: "jurName"  # API uses camelCase
+        description: "Actual jurisdiction name (e.g., 'CA', 'ORANGE', 'IRVINE')"
+        example: "CA"
+      - name: "jur_description"
+        type: "string"
+        required: false  # OPTIONAL in real API responses
+        api_field: "jurDescription"  # API uses camelCase
+        description: "Human-readable jurisdiction description"
+        example: "US State Sales Tax"
+      - name: "jur_tax_code"
+        type: "string"
+        required: false  # OPTIONAL in real API responses
+        api_field: "jurTaxCode"  # API uses camelCase
+        description: "Tax code for jurisdiction"
+        example: "06"
+
+  - name: "V60Service"
+    description: "Service taxability information"
+    properties:
+      - name: "adjustment_type"
+        type: "string"
+        required: true
+        api_field: "adjustmentType"  # API uses camelCase
+        description: "Service adjustment type"
+        example: "SERVICE_TAXABLE"
+      - name: "taxable"
+        type: "string"
+        required: true
+        description: "Taxability indicator"
+        enum: ["Y", "N"]
+      - name: "description"
+        type: "string"
+        required: true
+        description: "Service description"
+
+  - name: "V60Shipping"
+    description: "Shipping taxability information"
+    properties:
+      - name: "adjustment_type"
+        type: "string"
+        required: true
+        api_field: "adjustmentType"  # API uses camelCase
+        description: "Shipping adjustment type"
+        example: "FREIGHT_TAXABLE"
+      - name: "taxable"
+        type: "string"
+        required: true
+        description: "Taxability indicator"
+        enum: ["Y", "N"]
+      - name: "description"
+        type: "string"
+        required: true
+        description: "Shipping description"
+
+  - name: "V60SourcingRules"
+    description: "Sourcing rules (origin vs destination) - API field is 'sourcingRules'"
+    api_field: "sourcingRules"  # IMPORTANT: Not 'originDestination'
+    properties:
+      - name: "adjustment_type"
+        type: "string"
+        required: true
+        api_field: "adjustmentType"  # API uses camelCase
+        description: "Sourcing rules type"
+        example: "ORIGIN_DESTINATION"
+      - name: "description"
+        type: "string"
+        required: true
+        description: "Sourcing rules description"
+        example: "Destination Based Taxation"
+      - name: "value"
+        type: "string"
+        required: true
+        description: "Origin/destination indicator"
+        enum: ["O", "D"]
+
+  - name: "V60TaxSummary"
+    description: "Tax rate summary"
+    properties:
+      - name: "rate"
+        type: "number"
+        format: "float"
+        required: true
+        description: "Summary tax rate"
+      - name: "tax_type"
+        type: "string"  # STRING not strict enum
+        required: true
+        api_field: "taxType"  # API uses camelCase
+        description: "Tax type (e.g., SALES_TAX, USE_TAX)"
+        example: "SALES_TAX"
+      - name: "summary_name"
+        type: "string"
+        required: true
+        api_field: "summaryName"  # API uses camelCase
+        description: "Summary description"
+        example: "Total Base Sales Tax"
+      - name: "display_rates"
+        type: "array"
+        items_type: "V60DisplayRate"
+        required: true
+        api_field: "displayRates"  # API uses camelCase
+        description: "Array of display rate breakdowns"
+
+  - name: "V60DisplayRate"
+    description: "Display rate breakdown within tax summary"
+    properties:
+      - name: "name"
+        type: "string"
+        required: true
+        description: "Display rate name"
+        example: "Total Rate"
+      - name: "rate"
+        type: "number"
+        format: "float"
+        required: true
+        description: "Display rate value"
+        example: 0.0775
+
+  - name: "V60AddressDetail"
+    description: "Address detail information for v6.0"
+    properties:
+      - name: "normalizedAddress"
+        type: "string"
+        required: true
+        description: "Normalized address"
+      - name: "incorporated"
+        type: "string"
+        required: true
+        description: "Incorporation status"
+        enum: ["true", "false"]
+      - name: "geoLat"
+        type: "number"
+        format: "float"
+        required: true
+        description: "Geocoded latitude"
+      - name: "geoLng"
+        type: "number"
+        format: "float"
+        required: true
+        description: "Geocoded longitude"
+  - name: "V60AccountMetrics"
+    description: "Account metrics by API key"
+    properties:
+      - name: "core_request_count"
+        type: "integer"
+        format: "int64"
+        required: true
+        description: "Number of core API requests made"
+      - name: "core_request_limit"
+        type: "integer"
+        format: "int64"
+        required: true
+        description: "Maximum allowed core API requests"
+      - name: "core_usage_percent"
+        type: "number"
+        format: "float"
+        required: true
+        description: "Percentage of core request limit used"
+      - name: "geo_enabled"
+        type: "boolean"
+        required: true
+        description: "Whether geolocation features are enabled"
+      - name: "geo_request_count"
+        type: "integer"
+        format: "int64"
+        required: true
+        description: "Number of geolocation requests made"
+      - name: "geo_request_limit"
+        type: "integer"
+        format: "int64"
+        required: true
+        description: "Maximum allowed geolocation requests"
+      - name: "geo_usage_percent"
+        type: "number"
+        format: "float"
+        required: true
+        description: "Percentage of geolocation request limit used"
+      - name: "is_active"
+        type: "boolean"
+        required: true
+        description: "Whether the account is currently active"
+      - name: "message"
+        type: "string"
+        required: true
+        description: "Account status or informational message"
+
+
+# -----------------------------------------------------------------------------
+# Dependencies
+# -----------------------------------------------------------------------------
+dependencies:
+  # Runtime dependencies (Go modules)
+  # Note: Go standard library provides net/http, encoding/json, etc.
+  runtime:
+    - name: "stdlib:net/http"
+      purpose: "HTTP client functionality (built into Go)"
+      note: "No external dependency required"
+    - name: "stdlib:encoding/json"
+      purpose: "JSON marshaling/unmarshaling (built into Go)"
+      note: "No external dependency required"
+    - name: "stdlib:context"
+      purpose: "Context for cancellation and timeouts (built into Go)"
+      note: "No external dependency required"
+    - name: "github.com/go-playground/validator/v10"
+      version: ">=10.0.0"
+      purpose: "Struct validation (optional, if needed)"
+      required: false
+
+  # Development dependencies (Go tools)
+  development:
+    - name: "golang.org/x/tools/cmd/goimports"
+      purpose: "Import management and formatting"
+    - name: "github.com/golangci/golangci-lint"
+      version: ">=1.55.0"
+      purpose: "Comprehensive linting (includes staticcheck, gosec, etc.)"
+    - name: "github.com/stretchr/testify"
+      version: ">=1.8.0"
+      purpose: "Testing assertions and mocks"
+
+# -----------------------------------------------------------------------------
+# Project Structure
+# -----------------------------------------------------------------------------
+# Define the directory structure for the SDK (Go module layout)
+structure:
+  root_files:
+    - "README.md"
+    - "LICENSE"
+    - ".gitignore"
+    - "go.mod"              # Go module definition
+    - "go.sum"              # Go dependency checksums
+    - "Makefile"            # Build automation (optional but recommended)
+
+  directories:
+    # Main package directory (root level - typical Go layout)
+    - path: "."
+      contents:
+        - "client.go"         # Main client implementation
+        - "config.go"         # Configuration options
+        - "errors.go"         # Error definitions and sentinel errors
+        - "options.go"        # Option types for functional options pattern
+
+    # Models package for request/response structures
+    - path: "models"
+      contents:
+        - "v60_response.go"   # V60 API models
+        - "v60_metadata.go"   # V60 metadata models
+        - "v60_rates.go"      # V60 rate models
+        - "account.go"        # Account metrics models
+
+    # Internal utilities (not exported)
+    - path: "internal/http"
+      contents:
+        - "client.go"         # HTTP client wrapper
+        - "retry.go"          # Retry logic with exponential backoff
+        - "middleware.go"     # Request/response middleware
+
+    - path: "internal/validation"
+      contents:
+        - "validator.go"      # Input validation utilities
+
+    # Test files (co-located with implementation using _test.go suffix)
+    - path: "."
+      contents:
+        - "client_test.go"    # Tests for client
+        - "errors_test.go"    # Tests for error handling
+
+    - path: "internal/http"
+      contents:
+        - "client_test.go"    # REQUIRED: Tests for HTTP client
+        - "retry_test.go"     # REQUIRED: Tests for retry logic
+
+    # Examples directory
+    - path: "examples"
+      contents:
+        - "basic_usage"       # Directory with main.go for basic usage
+        - "concurrent_usage"  # Directory with main.go for concurrent operations
+        - "error_handling"    # Directory with main.go for error handling
+
+    # Documentation directory
+    - path: "docs"
+      contents:
+        - "index.md"
+        - "quickstart.md"
+        - "api-reference.md"
+
+# -----------------------------------------------------------------------------
+# Code Generation Settings
+# -----------------------------------------------------------------------------
+code_generation:
+  # Style guide compliance
+  style:
+    follow_language_conventions: true
+    style_guide: "Effective Go + Go Code Review Comments"
+    formatting_tool: "gofmt"            # Standard Go formatter
+    import_tool: "goimports"            # Import organization
+    line_length: 120                    # Go community standard (soft limit)
+    indent_style: "tabs"                # Go standard is tabs
+
+  # Documentation
+  documentation:
+    style: "godoc"                      # Standard Go documentation format
+    include_examples: true              # Include example functions (Example*)
+    include_type_info: true             # Type information in comments
+    minimum_coverage: "public_api"      # Document all exported symbols
+    format: |
+      // FunctionName does something useful.
+      //
+      // It takes parameters and returns results.
+      // Multiple paragraphs are separated by blank comment lines.
+      //
+      // Example:
+      //
+      //     client := ziptax.NewClient(apiKey)
+      //     response, err := client.GetSalesTaxByAddress(ctx, address)
+
+  # Testing
+  testing:
+    framework: "testing"                # Go standard testing package
+    include_unit_tests: true
+    include_integration_tests: true
+    mock_api_responses: true
+    use_testify: true                   # Use testify for assertions
+    use_table_tests: true               # Use table-driven tests pattern
+    target_coverage: 80
+
+  # Code quality
+  quality:
+    include_linter_config: true         # .golangci.yml configuration
+    include_formatter_config: false     # gofmt is standard, no config needed
+    include_makefile: true              # Build automation
+    include_pre_commit_hooks: true      # Git hooks for quality checks
+
+# -----------------------------------------------------------------------------
+# Build & Distribution
+# -----------------------------------------------------------------------------
+build:
+  # Build system
+  system: "go_modules"                  # Go modules (go.mod)
+  go_version: "1.21"                    # Minimum Go version
+
+  # Build commands
+  commands:
+    test: "go test ./..."
+    test_verbose: "go test -v ./..."
+    test_coverage: "go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out"
+    build: "go build ./..."
+    lint: "golangci-lint run"
+    fmt: "gofmt -s -w ."
+    imports: "goimports -w ."
+
+  # Distribution
+  distribution:
+    platforms:
+      - "pkg.go.dev"                    # Go package registry (automatic)
+      - "github"                        # GitHub releases for versioning
+
+    # Go module metadata (in go.mod)
+    module_path: "github.com/ziptax/ziptax-go"
+
+    # Release artifacts (optional binaries)
+    artifacts:
+      - platform: "linux/amd64"
+      - platform: "linux/arm64"
+      - platform: "darwin/amd64"
+      - platform: "darwin/arm64"
+      - platform: "windows/amd64"
+
+    # Tags and versioning
+    versioning:
+      scheme: "semver"                  # Semantic versioning
+      tag_format: "v{version}"          # e.g., v1.0.0
+
+    keywords:
+      - "tax"
+      - "ziptax"
+      - "api"
+      - "sdk"
+      - "sales-tax"
+      - "golang"
+
+# -----------------------------------------------------------------------------
+# Documentation
+# -----------------------------------------------------------------------------
+documentation:
+  # Documentation tools
+  generator: "godoc"                    # Go's native documentation tool
+  hosting: "pkg.go.dev"                 # Automatic hosting for public Go modules
+
+  # Content requirements
+  sections:
+    - name: "Installation"
+      required: true
+      content: "go get github.com/ziptax/ziptax-go"
+    - name: "Quick Start"
+      required: true
+    - name: "Authentication"
+      required: true
+    - name: "API Reference"
+      required: true
+      auto_generate: true               # Generated from godoc comments
+    - name: "Error Handling"
+      required: true
+    - name: "Examples"
+      required: true
+    - name: "Contributing"
+      required: false
+    - name: "Changelog"
+      required: true
+
+  # API documentation
+  api_docs:
+    include_request_examples: true
+    include_response_examples: true
+    include_error_examples: true
+    format: "markdown"
+    godoc_examples: true                # Include Example* test functions
+
+# -----------------------------------------------------------------------------
+# Examples
+# -----------------------------------------------------------------------------
+examples:
+  - name: "Basic Usage"
+    file: "examples/basic_usage/main.go"
+    description: "Simple example showing basic SDK initialization and usage"
+    required: true
+
+  - name: "Concurrent Operations"
+    file: "examples/concurrent_usage/main.go"
+    description: "Example using goroutines for concurrent operations"
+    required: true
+
+  - name: "Error Handling"
+    file: "examples/error_handling/main.go"
+    description: "Demonstrates proper error handling patterns"
+    required: true
+
+  - name: "Context Timeout"
+    file: "examples/context_timeout/main.go"
+    description: "Using context for request timeouts and cancellation"
+    required: false
+
+# -----------------------------------------------------------------------------
+# CI/CD Configuration
+# -----------------------------------------------------------------------------
+ci_cd:
+  # Continuous Integration
+  platform: "github_actions"
+
+  workflows:
+    - name: "Test"
+      triggers: ["push", "pull_request"]
+      jobs:
+        - "lint"                        # golangci-lint
+        - "fmt-check"                   # gofmt check
+        - "test"                        # go test
+        - "coverage"                    # coverage report
+        - "vet"                         # go vet
+
+    - name: "Publish"
+      triggers: ["tag"]                 # Triggered on version tags (v*)
+      jobs:
+        - "build"
+        - "tag-release"                 # GitHub release
+        # Note: pkg.go.dev indexes automatically on tag push
+
+  # Testing matrix
+  test_matrix:
+    go_versions: ["1.21", "1.22", "1.23"]
+    os: ["ubuntu-latest", "macos-latest", "windows-latest"]
+
+# -----------------------------------------------------------------------------
+# Additional Instructions
+# -----------------------------------------------------------------------------
+# Any special instructions or considerations for this SDK
+instructions:
+  special_considerations:
+    - "Use float64 for monetary values (tax rates are decimals)"
+    - "ZIP codes should be validated for format"
+    - "All public functions should accept context.Context as first parameter"
+    - "All API responses should be properly typed with Go structs"
+    - "Use pointer types for optional/nullable fields in structs"
+    - "Follow Go idioms: errors are values, not exceptions"
+
+  # Code patterns to follow
+  patterns:
+    - pattern: "Client initialization with functional options"
+      example: |
+        // Create a new client with API key
+        client := ziptax.NewClient(apiKey)
+
+        // Or with options
+        client := ziptax.NewClient(
+            apiKey,
+            ziptax.WithTimeout(30*time.Second),
+            ziptax.WithRetry(3),
+        )
+
+    - pattern: "Context-based API calls"
+      example: |
+        ctx := context.Background()
+        response, err := client.GetSalesTaxByAddress(ctx, "200 Spectrum Center Drive, Irvine, CA 92618")
+        if err != nil {
+            return fmt.Errorf("failed to get tax rates: %w", err)
+        }
+
+    - pattern: "Error handling with wrapped errors"
+      example: |
+        if err != nil {
+            if errors.Is(err, ziptax.ErrInvalidAPIKey) {
+                // Handle invalid API key
+            }
+            return fmt.Errorf("operation failed: %w", err)
+        }
+
+    - pattern: "Concurrent requests with goroutines"
+      example: |
+        var wg sync.WaitGroup
+        results := make(chan *ziptax.V60Response, len(addresses))
+
+        for _, addr := range addresses {
+            wg.Add(1)
+            go func(address string) {
+                defer wg.Done()
+                resp, err := client.GetSalesTaxByAddress(ctx, address)
+                if err != nil {
+                    log.Printf("error: %v", err)
+                    return
+                }
+                results <- resp
+            }(addr)
+        }
+        wg.Wait()
+        close(results)
+
+  # Avoid these patterns
+  anti_patterns:
+    - "Don't use global variables for client configuration"
+    - "Don't ignore errors - always check and handle them"
+    - "Don't create goroutines without proper synchronization"
+    - "Avoid using panic in library code - return errors instead"
+    - "Don't use naked returns in functions longer than a few lines"
+
+# -----------------------------------------------------------------------------
+# Actual API Response Examples
+# -----------------------------------------------------------------------------
+# CRITICAL: These are REAL API responses - use these to validate model structure
+actual_api_responses:
+  v60_tax_lookup:
+    description: "Actual V60 response for GetSalesTaxByAddress"
+    endpoint: "GET /request/v60/"
+    example: |
+      {
+        "metadata": {
+          "version": "v60",
+          "response": {
+            "code": 100,
+            "name": "RESPONSE_CODE_SUCCESS",
+            "message": "Successful API Request.",
+            "definition": "http://api.zip-tax.com/request/v60/schema"
+          }
+        },
+        "baseRates": [
+          {
+            "rate": 0.06,
+            "jurType": "US_STATE_SALES_TAX",
+            "jurName": "CA",
+            "jurDescription": "US State Sales Tax",
+            "jurTaxCode": "06"
+          },
+          {
+            "rate": 0.0025,
+            "jurType": "US_COUNTY_SALES_TAX",
+            "jurName": "ORANGE",
+            "jurDescription": "US County Sales Tax"
+          },
+          {
+            "rate": 0.015,
+            "jurType": "US_CITY_SALES_TAX",
+            "jurName": "IRVINE"
+          }
+        ],
+        "service": {
+          "adjustmentType": "SERVICE_TAXABLE",
+          "taxable": "N",
+          "description": "Services non-taxable"
+        },
+        "shipping": {
+          "adjustmentType": "FREIGHT_TAXABLE",
+          "taxable": "N",
+          "description": "Freight non-taxable"
+        },
+        "sourcingRules": {
+          "adjustmentType": "ORIGIN_DESTINATION",
+          "description": "Destination Based Taxation",
+          "value": "D"
+        },
+        "taxSummaries": [
+          {
+            "rate": 0.0775,
+            "taxType": "SALES_TAX",
+            "summaryName": "Total Base Sales Tax",
+            "displayRates": [
+              {
+                "name": "Total Rate",
+                "rate": 0.0775
+              }
+            ]
+          }
+        ],
+        "addressDetail": {
+          "normalizedAddress": "200 Spectrum Center Dr, Irvine, CA 92618-5003, United States",
+          "incorporated": "true",
+          "geoLat": 33.65253,
+          "geoLng": -117.74794
+        }
+      }
+
+  v60_account_metrics:
+    description: "Actual V60AccountMetrics response"
+    endpoint: "GET /account/v60/metrics"
+    example: |
+      {
+        "core_request_count": 15595,
+        "core_request_limit": 1000000,
+        "core_usage_percent": 1.5595,
+        "geo_enabled": true,
+        "geo_request_count": 43891,
+        "geo_request_limit": 1000000,
+        "geo_usage_percent": 4.3891,
+        "is_active": true,
+        "message": "Contact support@zip.tax to modify your account"
+      }
+
+# -----------------------------------------------------------------------------
+# CI/CD Quality Requirements
+# -----------------------------------------------------------------------------
+# These are MANDATORY - all checks must pass for the SDK to be release-ready
+quality_requirements:
+  code_coverage:
+    minimum: 80
+    tool: "go test with coverage"
+    command: "go test -coverprofile=coverage.out ./... && go tool cover -func=coverage.out | grep total"
+    html_report: "go tool cover -html=coverage.out -o coverage.html"
+    critical_packages:
+      - "internal/http"               # HTTP client and middleware
+      - "internal/http (retry logic)" # Retry logic
+      - "."                           # Main package (client, errors)
+
+  compilation:
+    tool: "go build"
+    command: "go build ./..."
+    notes:
+      - "Go compiler ensures type safety at compile time"
+      - "No separate type checker needed - types are enforced by the compiler"
+
+  code_formatting:
+    tool: "gofmt"
+    version: "built-in"               # Part of Go toolchain
+    command: "gofmt -l -s ."
+    check_command: "test -z $(gofmt -l -s .)"
+    import_formatting: "goimports -l ."
+    notes:
+      - "Use -s flag for simplify code"
+      - "goimports also organizes imports"
+
+  linting:
+    tool: "golangci-lint"
+    version: ">=1.55.0"
+    command: "golangci-lint run"
+    config_file: ".golangci.yml"
+    enabled_linters:
+      - "errcheck"                    # Check error returns
+      - "gosimple"                    # Suggest code simplifications
+      - "govet"                       # Go vet built-in checks
+      - "ineffassign"                 # Detect ineffectual assignments
+      - "staticcheck"                 # Advanced static analysis
+      - "unused"                      # Check for unused code
+      - "gofmt"                       # Ensure gofmt compliance
+      - "goimports"                   # Ensure imports are formatted
+      - "misspell"                    # Spell checking
+      - "revive"                      # Golint replacement
+      - "gosec"                       # Security checks
+    notes:
+      - "golangci-lint runs multiple linters in parallel"
+      - "Configure in .golangci.yml for custom rules"
+
+  static_analysis:
+    tool: "go vet"
+    command: "go vet ./..."
+    purpose: "Examine Go source code and report suspicious constructs"
+
+  go_mod_tidy:
+    tool: "go mod"
+    command: "go mod tidy && git diff --exit-code go.mod go.sum"
+    purpose: "Ensure go.mod and go.sum are up to date"
+
+  struct_tags:
+    notes:
+      - "Use json tags for all exported struct fields that map to API"
+      - "Format: `json:\"camelCaseField,omitempty\"`"
+      - "Use omitempty for optional/pointer fields"
+      - "Example struct definition:"
+    example: |
+      type V60BaseRate struct {
+          Rate            float64  `json:"rate"`
+          RateID          *string  `json:"rateId,omitempty"`
+          JurType         string   `json:"jurType"`
+          JurName         string   `json:"jurName"`
+          JurDescription  *string  `json:"jurDescription,omitempty"`
+          JurTaxCode      *string  `json:"jurTaxCode,omitempty"`
+      }
+
+  error_handling:
+    requirements:
+      - "All errors must be checked and handled"
+      - "Use fmt.Errorf with %w for error wrapping"
+      - "Define sentinel errors for common error conditions"
+      - "Never use panic in library code"
+    example: |
+      // Define sentinel errors
+      var (
+          ErrInvalidAPIKey = errors.New("invalid API key")
+          ErrRateLimitExceeded = errors.New("rate limit exceeded")
+      )
+
+      // Wrap errors with context
+      if err != nil {
+          return nil, fmt.Errorf("failed to fetch tax rates: %w", err)
+      }
+
+  context_usage:
+    requirements:
+      - "All blocking operations must accept context.Context as first parameter"
+      - "Respect context cancellation and timeouts"
+      - "Pass context through the call chain"
+    example: |
+      func (c *Client) GetSalesTaxByAddress(ctx context.Context, address string) (*models.V60Response, error) {
+          req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+          if err != nil {
+              return nil, err
+          }
+          // ... rest of implementation
+      }
+
+# -----------------------------------------------------------------------------
+# Version History
+# -----------------------------------------------------------------------------
+version_history:
+  - version: "1.0.0"
+    date: "2024-01-15"
+    changes:
+      - "Initial release"
+      - "Support for TaxRates and Jurisdictions resources"
+      - "Basic authentication and error handling"
