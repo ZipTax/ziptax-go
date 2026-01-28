@@ -282,3 +282,249 @@ func TestClient_GetAccountMetrics(t *testing.T) {
 		assert.True(t, metrics.IsActive)
 	})
 }
+
+func TestClient_GetRatesByPostalCode(t *testing.T) {
+	t.Run("successful request with 5-digit postal code", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/request/v60", r.URL.Path)
+			assert.Equal(t, "92694", r.URL.Query().Get("postalcode"))
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"version": "v60",
+				"rCode": 100,
+				"results": [
+					{
+						"geoPostalCode": "92694",
+						"geoCity": "LADERA RANCH",
+						"geoCounty": "ORANGE",
+						"geoState": "CA",
+						"taxSales": 0.0775,
+						"taxUse": 0.0775,
+						"txbService": "N",
+						"txbFreight": "N",
+						"stateSalesTax": 0.06,
+						"stateUseTax": 0.06,
+						"citySalesTax": 0,
+						"cityUseTax": 0,
+						"cityTaxCode": "",
+						"countySalesTax": 0.0025,
+						"countyUseTax": 0.0025,
+						"countyTaxCode": "",
+						"districtSalesTax": 0.015,
+						"districtUseTax": 0.015,
+						"district1Code": "37",
+						"district1SalesTax": 0,
+						"district1UseTax": 0,
+						"district2Code": "37",
+						"district2SalesTax": 0.005,
+						"district2UseTax": 0.005,
+						"district3Code": "",
+						"district3SalesTax": 0,
+						"district3UseTax": 0,
+						"district4Code": "30",
+						"district4SalesTax": 0.01,
+						"district4UseTax": 0.01,
+						"district5Code": "",
+						"district5SalesTax": 0,
+						"district5UseTax": 0,
+						"originDestination": "D"
+					},
+					{
+						"geoPostalCode": "92694",
+						"geoCity": "SAN JUAN CAPISTRANO",
+						"geoCounty": "ORANGE",
+						"geoState": "CA",
+						"taxSales": 0.0775,
+						"taxUse": 0.0775,
+						"txbService": "N",
+						"txbFreight": "N",
+						"stateSalesTax": 0.06,
+						"stateUseTax": 0.06,
+						"citySalesTax": 0,
+						"cityUseTax": 0,
+						"cityTaxCode": "",
+						"countySalesTax": 0.0025,
+						"countyUseTax": 0.0025,
+						"countyTaxCode": "",
+						"districtSalesTax": 0.015,
+						"districtUseTax": 0.015,
+						"district1Code": "37",
+						"district1SalesTax": 0,
+						"district1UseTax": 0,
+						"district2Code": "37",
+						"district2SalesTax": 0.005,
+						"district2UseTax": 0.005,
+						"district3Code": "",
+						"district3SalesTax": 0,
+						"district3UseTax": 0,
+						"district4Code": "30",
+						"district4SalesTax": 0.01,
+						"district4UseTax": 0.01,
+						"district5Code": "",
+						"district5SalesTax": 0,
+						"district5UseTax": 0,
+						"originDestination": "D"
+					}
+				],
+				"addressDetail": {
+					"normalizedAddress": "feature available for geo address lookups only",
+					"incorporated": "feature available for geo address lookups only",
+					"geoLat": 0,
+					"geoLng": 0
+				}
+			}`))
+		}))
+		defer server.Close()
+
+		client, err := NewClient("test-api-key", WithBaseURL(server.URL))
+		require.NoError(t, err)
+
+		response, err := client.GetRatesByPostalCode(context.Background(), "92694")
+		require.NoError(t, err)
+		assert.NotNil(t, response)
+		assert.Equal(t, "v60", response.Version)
+		assert.Equal(t, 100, response.RCode)
+		assert.Len(t, response.Results, 2)
+		assert.Equal(t, "LADERA RANCH", response.Results[0].GeoCity)
+		assert.Equal(t, "SAN JUAN CAPISTRANO", response.Results[1].GeoCity)
+		assert.Equal(t, 0.0775, response.Results[0].TaxSales)
+		assert.Equal(t, "D", response.Results[0].OriginDestination)
+	})
+
+	t.Run("successful request with 9-digit postal code", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/request/v60", r.URL.Path)
+			assert.Equal(t, "92694-1234", r.URL.Query().Get("postalcode"))
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"version": "v60",
+				"rCode": 100,
+				"results": [
+					{
+						"geoPostalCode": "92694",
+						"geoCity": "LADERA RANCH",
+						"geoCounty": "ORANGE",
+						"geoState": "CA",
+						"taxSales": 0.0775,
+						"taxUse": 0.0775,
+						"txbService": "N",
+						"txbFreight": "N",
+						"stateSalesTax": 0.06,
+						"stateUseTax": 0.06,
+						"citySalesTax": 0,
+						"cityUseTax": 0,
+						"cityTaxCode": "",
+						"countySalesTax": 0.0025,
+						"countyUseTax": 0.0025,
+						"countyTaxCode": "",
+						"districtSalesTax": 0.015,
+						"districtUseTax": 0.015,
+						"district1Code": "37",
+						"district1SalesTax": 0,
+						"district1UseTax": 0,
+						"district2Code": "37",
+						"district2SalesTax": 0.005,
+						"district2UseTax": 0.005,
+						"district3Code": "",
+						"district3SalesTax": 0,
+						"district3UseTax": 0,
+						"district4Code": "30",
+						"district4SalesTax": 0.01,
+						"district4UseTax": 0.01,
+						"district5Code": "",
+						"district5SalesTax": 0,
+						"district5UseTax": 0,
+						"originDestination": "D"
+					}
+				],
+				"addressDetail": {
+					"normalizedAddress": "feature available for geo address lookups only",
+					"incorporated": "feature available for geo address lookups only",
+					"geoLat": 0,
+					"geoLng": 0
+				}
+			}`))
+		}))
+		defer server.Close()
+
+		client, err := NewClient("test-api-key", WithBaseURL(server.URL))
+		require.NoError(t, err)
+
+		response, err := client.GetRatesByPostalCode(context.Background(), "92694-1234")
+		require.NoError(t, err)
+		assert.NotNil(t, response)
+		assert.Equal(t, "v60", response.Version)
+		assert.Len(t, response.Results, 1)
+	})
+
+	t.Run("successful request with format option", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/request/v60", r.URL.Path)
+			assert.Equal(t, "92694", r.URL.Query().Get("postalcode"))
+			assert.Equal(t, "json", r.URL.Query().Get("format"))
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"version": "v60",
+				"rCode": 100,
+				"results": [],
+				"addressDetail": {
+					"normalizedAddress": "",
+					"incorporated": "",
+					"geoLat": 0,
+					"geoLng": 0
+				}
+			}`))
+		}))
+		defer server.Close()
+
+		client, err := NewClient("test-api-key", WithBaseURL(server.URL))
+		require.NoError(t, err)
+
+		response, err := client.GetRatesByPostalCode(
+			context.Background(),
+			"92694",
+			WithFormat("json"),
+		)
+		require.NoError(t, err)
+		assert.NotNil(t, response)
+	})
+
+	t.Run("empty postal code", func(t *testing.T) {
+		client, err := NewClient("test-api-key")
+		require.NoError(t, err)
+
+		_, err = client.GetRatesByPostalCode(context.Background(), "")
+		require.Error(t, err)
+		var validationErr *ValidationError
+		require.ErrorAs(t, err, &validationErr)
+		assert.Equal(t, "postalcode", validationErr.Field)
+	})
+
+	t.Run("invalid postal code format", func(t *testing.T) {
+		client, err := NewClient("test-api-key")
+		require.NoError(t, err)
+
+		_, err = client.GetRatesByPostalCode(context.Background(), "1234")
+		require.Error(t, err)
+		var validationErr *ValidationError
+		require.ErrorAs(t, err, &validationErr)
+		assert.Equal(t, "postalcode", validationErr.Field)
+	})
+
+	t.Run("postal code with letters", func(t *testing.T) {
+		client, err := NewClient("test-api-key")
+		require.NoError(t, err)
+
+		_, err = client.GetRatesByPostalCode(context.Background(), "9269A")
+		require.Error(t, err)
+		var validationErr *ValidationError
+		require.ErrorAs(t, err, &validationErr)
+		assert.Equal(t, "postalcode", validationErr.Field)
+	})
+}
