@@ -248,3 +248,88 @@ func TestValidateFormat(t *testing.T) {
 		})
 	}
 }
+
+func TestValidatePostalCode(t *testing.T) {
+	tests := []struct {
+		name       string
+		postalCode string
+		wantErr    bool
+	}{
+		{
+			name:       "valid 5-digit postal code",
+			postalCode: "92694",
+			wantErr:    false,
+		},
+		{
+			name:       "valid 9-digit postal code",
+			postalCode: "92694-1234",
+			wantErr:    false,
+		},
+		{
+			name:       "valid postal code with leading zeros",
+			postalCode: "00001",
+			wantErr:    false,
+		},
+		{
+			name:       "valid 9-digit postal code with leading zeros",
+			postalCode: "00001-0001",
+			wantErr:    false,
+		},
+		{
+			name:       "empty postal code",
+			postalCode: "",
+			wantErr:    true,
+		},
+		{
+			name:       "whitespace only",
+			postalCode: "   ",
+			wantErr:    true,
+		},
+		{
+			name:       "too short",
+			postalCode: "1234",
+			wantErr:    true,
+		},
+		{
+			name:       "too long",
+			postalCode: "123456",
+			wantErr:    true,
+		},
+		{
+			name:       "invalid 9-digit format - missing dash",
+			postalCode: "926941234",
+			wantErr:    true,
+		},
+		{
+			name:       "invalid 9-digit format - wrong extension length",
+			postalCode: "92694-123",
+			wantErr:    true,
+		},
+		{
+			name:       "contains letters",
+			postalCode: "9269A",
+			wantErr:    true,
+		},
+		{
+			name:       "contains spaces",
+			postalCode: "92 694",
+			wantErr:    true,
+		},
+		{
+			name:       "valid postal code with surrounding whitespace",
+			postalCode: "  92694  ",
+			wantErr:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidatePostalCode(tt.postalCode)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}

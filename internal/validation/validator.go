@@ -9,6 +9,8 @@ import (
 var (
 	// historicalDatePattern matches YYYY-MM format
 	historicalDatePattern = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}$`)
+	// postalCodePattern matches US postal codes in 5-digit or 9-digit format
+	postalCodePattern = regexp.MustCompile(`^[0-9]{5}(-[0-9]{4})?$`)
 )
 
 // ValidateAddress validates an address string.
@@ -77,6 +79,18 @@ func ValidateFormat(format string) error {
 	}
 	if !validFormats[format] {
 		return fmt.Errorf("format must be json or xml")
+	}
+	return nil
+}
+
+// ValidatePostalCode validates a US postal code in 5-digit or 9-digit format.
+func ValidatePostalCode(postalCode string) error {
+	postalCode = strings.TrimSpace(postalCode)
+	if postalCode == "" {
+		return fmt.Errorf("postal code cannot be empty")
+	}
+	if !postalCodePattern.MatchString(postalCode) {
+		return fmt.Errorf("postal code must be in 5-digit (e.g., 92694) or 9-digit (e.g., 92694-1234) format")
 	}
 	return nil
 }

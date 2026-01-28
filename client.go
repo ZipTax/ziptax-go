@@ -233,6 +233,61 @@ func (c *Client) GetAccountMetrics(ctx context.Context) (*models.V60AccountMetri
 	return &metrics, nil
 }
 
+// GetRatesByPostalCode returns sales and use tax rate details from a US postal code input.
+// A single postal code may return multiple results for different cities that share the same postal code.
+//
+// Example:
+//
+//	ctx := context.Background()
+//	response, err := client.GetRatesByPostalCode(ctx, "92694")
+//	if err != nil {
+//		return fmt.Errorf("failed to get tax rates: %w", err)
+//	}
+//	for _, result := range response.Results {
+//		fmt.Printf("City: %s, Total tax rate: %.4f\n", result.GeoCity, result.TaxSales)
+//	}
+func (c *Client) GetRatesByPostalCode(ctx context.Context, postalCode string, opts ...RequestOption) (*models.V60PostalCodeResponse, error) {
+	// Validate postal code
+	if err := validation.ValidatePostalCode(postalCode); err != nil {
+		return nil, &ValidationError{
+			Field:   "postalcode",
+			Value:   postalCode,
+			Message: err.Error(),
+		}
+	}
+
+	// Build request options
+	reqOpts := &RequestOptions{}
+	for _, opt := range opts {
+		opt(reqOpts)
+	}
+
+	// Validate optional parameters
+	if err := validation.ValidateFormat(reqOpts.Format); err != nil {
+		return nil, &ValidationError{
+			Field:   "format",
+			Value:   reqOpts.Format,
+			Message: err.Error(),
+		}
+	}
+
+	// Build query parameters
+	queryParams := map[string]string{
+		"postalcode": postalCode,
+	}
+	if reqOpts.Format != "" {
+		queryParams["format"] = reqOpts.Format
+	}
+
+	// Make request
+	var response models.V60PostalCodeResponse
+	if err := c.httpClient.Get(ctx, "/request/v60", queryParams, &response); err != nil {
+		return nil, fmt.Errorf("failed to get rates by postal code: %w", err)
+	}
+
+	return &response, nil
+}
+
 // RequestOptions holds optional parameters for API requests.
 type RequestOptions struct {
 	Historical  string // Historical date for rates (YYYY-MM format)
