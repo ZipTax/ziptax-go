@@ -9,8 +9,8 @@
 project:
   name: "ziptax-go"
   language: "go"
-  version: "1.0.0"
-  description: "Official Go SDK for the ZipTax API"
+  version: "0.2.0-beta"
+  description: "Official Go SDK for the ZipTax and TaxCloud APIs"
   module_path: "github.com/ziptax/ziptax-go"
   minimum_go_version: "1.21"
 
@@ -2260,9 +2260,22 @@ quality_requirements:
 # Version History
 # -----------------------------------------------------------------------------
 version_history:
-  - version: "1.0.0"
-    date: "2024-01-15"
+  - version: "0.2.0-beta"
+    date: "2026-02-16"
+    changes:
+      - "TaxCloud order management: CreateOrder, GetOrder, UpdateOrder, RefundOrder"
+      - "Dual API support: ZipTax (required) + TaxCloud (optional)"
+      - "TaxCloud client configuration options"
+      - "Internal HTTP Post, Patch, GetWithOptions methods"
+      - "Unified APIError handling across both APIs"
+      - "Historical date format corrected to YYYYMM"
+      - "9-digit postal codes normalized to 5-digit"
+      - "GitHub Actions for version bump checks and automated releases"
+      - "CHANGELOG.md, CLAUDE.md, VERSION_BUMP_GUIDE.md documentation"
+  - version: "0.1.0"
+    date: "2025-01-15"
     changes:
       - "Initial release"
-      - "Support for TaxRates and Jurisdictions resources"
-      - "Basic authentication and error handling"
+      - "ZipTax API: address, geolocation, postal code lookups"
+      - "Account metrics"
+      - "Retry logic, context support, input validation"

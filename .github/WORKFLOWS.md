@@ -280,6 +280,7 @@ These are configured in the workflow files and don't require manual setup.
 ## Related Documentation
 
 - [VERSION_BUMP_GUIDE.md](./VERSION_BUMP_GUIDE.md) - Detailed versioning guide
+- [CHANGELOG.md](../CHANGELOG.md) - Release history and changes
 - [Semantic Versioning](https://semver.org/) - Official SemVer specification
 - [version.go](../version.go) - Current version constant
 - [README.md](../README.md#versioning) - User-facing versioning info

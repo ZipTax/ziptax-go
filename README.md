@@ -421,6 +421,10 @@ make check
 make build
 ```
 
+## Changelog
+
+See [CHANGELOG.md](./CHANGELOG.md) for a detailed list of changes in each release.
+
 ## Versioning
 
 This project follows [Semantic Versioning](https://semver.org/). The version is defined in [`version.go`](./version.go).
@@ -443,10 +447,11 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 **Before submitting:**
 1. Update the version in `version.go` following semantic versioning
-2. Add tests for new functionality
-3. Update documentation (README, GoDoc comments)
-4. Ensure all tests pass (`make test`)
-5. Run linter (`make lint`)
+2. Update [`CHANGELOG.md`](./CHANGELOG.md) with your changes
+3. Add tests for new functionality
+4. Update documentation (README, GoDoc comments)
+5. Ensure all tests pass (`make test`)
+6. Run linter (`make lint`)
 
 ## License
 

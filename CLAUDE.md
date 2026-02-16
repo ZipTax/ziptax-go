@@ -394,6 +394,7 @@ When extending this SDK with AI assistance:
 
 ### Project Documentation
 - [README.md](./README.md) - User-facing documentation
+- [CHANGELOG.md](./CHANGELOG.md) - Release history and changes
 - [docs/spec.yaml](./docs/spec.yaml) - API specifications
 - [examples/](./examples/) - Usage examples
 
@@ -405,20 +406,26 @@ When extending this SDK with AI assistance:
 
 ## Version History
 
-### v1.0.0 (Initial Release)
+See [CHANGELOG.md](./CHANGELOG.md) for detailed release notes.
+
+### v0.2.0-beta (TaxCloud Integration)
+- TaxCloud order management: CreateOrder, GetOrder, UpdateOrder, RefundOrder
+- Dual API support: ZipTax (required) + TaxCloud (optional)
+- Unified APIError handling across both APIs
+- Historical date format corrected to YYYYMM
+- 9-digit postal codes normalized to 5-digit
+- GitHub Actions for version enforcement and automated releases
+- Comprehensive test coverage (88.5%)
+
+### v0.1.0 (Initial Release)
 - ZipTax API support
 - Tax rate lookups by address, geolocation, postal code
 - Account metrics
-- Comprehensive error handling
-
-### v1.1.0 (TaxCloud Integration)
-- TaxCloud order management
-- CreateOrder, GetOrder, UpdateOrder, RefundOrder
-- Dual API support
-- Optional TaxCloud credentials
+- Retry logic with exponential backoff
+- Context support, input validation, structured error handling
 
 ---
 
 **Maintained with**: Claude (Anthropic AI Assistant)
 **Development Approach**: AI-Pair Programming
-**Last Updated**: February 2025
+**Last Updated**: February 2026

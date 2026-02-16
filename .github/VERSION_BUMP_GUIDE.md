@@ -188,8 +188,8 @@ If your PR includes multiple types of changes, use the **highest level** bump ne
 - This keeps the version history clean
 
 ### 3. Update CHANGELOG
-- When bumping version, update `CHANGELOG.md` (if it exists)
-- Document what changed in the new version
+- When bumping version, update [`CHANGELOG.md`](../CHANGELOG.md)
+- Document what changed in the new version following the [Keep a Changelog](https://keepachangelog.com/) format
 
 ### 4. Coordinate Major Bumps
 - Discuss major version bumps with the team
@@ -249,6 +249,7 @@ If you're unsure which version number to bump:
 ## Related Files
 
 - [`version.go`](../version.go) - Version constant
+- [`CHANGELOG.md`](../CHANGELOG.md) - Release history
 - [`.github/workflows/version-bump-check.yml`](workflows/version-bump-check.yml) - GitHub Action
 - [`CLAUDE.md`](../CLAUDE.md) - AI development documentation
 - [`README.md`](../README.md) - Project documentation
