@@ -108,7 +108,7 @@ With optional parameters:
 response, err := client.GetSalesTaxByAddress(
     ctx,
     "200 Spectrum Center Drive, Irvine, CA 92618",
-    ziptax.WithHistorical("2024-01"),
+    ziptax.WithHistorical("202401"),
     ziptax.WithCountryCode("USA"),
     ziptax.WithFormat("json"),
 )
@@ -360,7 +360,7 @@ wg.Wait()
 
 ### Request Options
 
-- `WithHistorical(date string)` - Get historical rates (YYYY-MM format)
+- `WithHistorical(date string)` - Get historical rates (YYYYMM format, e.g., "202401")
 - `WithCountryCode(code string)` - Specify country code (USA or CAN)
 - `WithFormat(format string)` - Set response format (json or xml)
 

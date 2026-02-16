@@ -43,7 +43,7 @@ func TestClient_GetSalesTaxByAddress(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "/request/v60", r.URL.Path)
 			assert.Equal(t, "200 Spectrum Center Dr", r.URL.Query().Get("address"))
-			assert.Equal(t, "2024-01", r.URL.Query().Get("historical"))
+			assert.Equal(t, "202401", r.URL.Query().Get("historical"))
 			assert.Equal(t, "USA", r.URL.Query().Get("countryCode"))
 			assert.Equal(t, "json", r.URL.Query().Get("format"))
 
@@ -86,7 +86,7 @@ func TestClient_GetSalesTaxByAddress(t *testing.T) {
 		response, err := client.GetSalesTaxByAddress(
 			context.Background(),
 			"200 Spectrum Center Dr",
-			WithHistorical("2024-01"),
+			WithHistorical("202401"),
 			WithCountryCode("USA"),
 			WithFormat("json"),
 		)

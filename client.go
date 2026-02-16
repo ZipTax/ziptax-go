@@ -294,7 +294,7 @@ func (c *Client) GetRatesByPostalCode(ctx context.Context, postalCode string, op
 
 // RequestOptions holds optional parameters for API requests.
 type RequestOptions struct {
-	Historical  string // Historical date for rates (YYYY-MM format)
+	Historical  string // Historical date for rates (YYYYMM format, e.g., "202401")
 	CountryCode string // Country code (USA or CAN)
 	Format      string // Response format (json or xml)
 }
@@ -302,7 +302,7 @@ type RequestOptions struct {
 // RequestOption is a functional option for API requests.
 type RequestOption func(*RequestOptions)
 
-// WithHistorical sets the historical date for tax rates (YYYY-MM format).
+// WithHistorical sets the historical date for tax rates (YYYYMM format, e.g., "202401").
 func WithHistorical(date string) RequestOption {
 	return func(o *RequestOptions) {
 		o.Historical = date

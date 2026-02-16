@@ -156,9 +156,9 @@ resources:
             format: "date"
             required: false
             location: "query"
-            description: "Historical date for rates (YYYY-MM format)"
+            description: "Historical date for rates (YYYYMM format, e.g., 202401)"
             validation:
-              pattern: "^[0-9]{4}-[0-9]{2}$"
+              pattern: "^[0-9]{4}[0-9]{2}$"
           - name: "format"
             type: "string"
             required: false
@@ -201,9 +201,9 @@ resources:
             format: "date"
             required: false
             location: "query"
-            description: "Historical date for rates (YYYY-MM format)"
+            description: "Historical date for rates (YYYYMM format, e.g., 202401)"
             validation:
-              pattern: "^[0-9]{4}-[0-9]{2}$"
+              pattern: "^[0-9]{4}[0-9]{2}$"
           - name: "format"
             type: "string"
             required: false

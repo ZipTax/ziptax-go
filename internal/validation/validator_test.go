@@ -117,12 +117,12 @@ func TestValidateHistoricalDate(t *testing.T) {
 	}{
 		{
 			name:    "valid date",
-			date:    "2024-01",
+			date:    "202401",
 			wantErr: false,
 		},
 		{
 			name:    "valid date with leading zeros",
-			date:    "2024-09",
+			date:    "202409",
 			wantErr: false,
 		},
 		{
@@ -131,8 +131,13 @@ func TestValidateHistoricalDate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "invalid format - full date",
+			name:    "invalid format - full date with dashes",
 			date:    "2024-01-15",
+			wantErr: true,
+		},
+		{
+			name:    "invalid format - YYYY-MM with dash",
+			date:    "2024-01",
 			wantErr: true,
 		},
 		{
@@ -147,17 +152,17 @@ func TestValidateHistoricalDate(t *testing.T) {
 		},
 		{
 			name:    "invalid month - 00",
-			date:    "2024-00",
+			date:    "202400",
 			wantErr: true,
 		},
 		{
 			name:    "invalid month - 13",
-			date:    "2024-13",
+			date:    "202413",
 			wantErr: true,
 		},
 		{
 			name:    "valid month - 12",
-			date:    "2024-12",
+			date:    "202412",
 			wantErr: false,
 		},
 	}
