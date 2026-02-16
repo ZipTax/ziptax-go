@@ -92,3 +92,44 @@ func WithUserAgent(userAgent string) Option {
 		c.UserAgent = userAgent
 	}
 }
+
+// WithTaxCloudConnectionID sets the TaxCloud Connection ID for order management features.
+// This must be provided along with WithTaxCloudAPIKey to enable TaxCloud order operations.
+//
+// Example:
+//
+//	client := ziptax.NewClient(apiKey,
+//		ziptax.WithTaxCloudConnectionID("25eb9b97-5acb-492d-b720-c03e79cf715a"),
+//		ziptax.WithTaxCloudAPIKey("your-taxcloud-api-key"))
+func WithTaxCloudConnectionID(connectionID string) Option {
+	return func(c *Config) {
+		c.TaxCloudConnectionID = connectionID
+	}
+}
+
+// WithTaxCloudAPIKey sets the TaxCloud API key for order management features.
+// This must be provided along with WithTaxCloudConnectionID to enable TaxCloud order operations.
+//
+// Example:
+//
+//	client := ziptax.NewClient(apiKey,
+//		ziptax.WithTaxCloudConnectionID("25eb9b97-5acb-492d-b720-c03e79cf715a"),
+//		ziptax.WithTaxCloudAPIKey("your-taxcloud-api-key"))
+func WithTaxCloudAPIKey(apiKey string) Option {
+	return func(c *Config) {
+		c.TaxCloudAPIKey = apiKey
+	}
+}
+
+// WithTaxCloudBaseURL sets a custom base URL for the TaxCloud API.
+// Only needed if using a custom TaxCloud endpoint.
+//
+// Example:
+//
+//	client := ziptax.NewClient(apiKey,
+//		ziptax.WithTaxCloudBaseURL("https://custom-taxcloud-api.example.com"))
+func WithTaxCloudBaseURL(baseURL string) Option {
+	return func(c *Config) {
+		c.TaxCloudBaseURL = baseURL
+	}
+}

@@ -2,12 +2,14 @@ package ziptax
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/ziptax/ziptax-go/models"
 )
 
 func TestNewClient(t *testing.T) {
@@ -527,4 +529,87 @@ func TestClient_GetRatesByPostalCode(t *testing.T) {
 		require.ErrorAs(t, err, &validationErr)
 		assert.Equal(t, "postalcode", validationErr.Field)
 	})
+}
+
+func TestCreateOrder_NoTaxCloudCredentials(t *testing.T) {
+	// Create client without TaxCloud credentials
+	client, err := NewClient("test-api-key")
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	// Try to create an order
+	ctx := context.Background()
+	orderReq := &models.CreateOrderRequest{
+		OrderID:         "test-order-123",
+		CustomerID:      "customer-456",
+		TransactionDate: "2024-01-15T09:30:00Z",
+		CompletedDate:   "2024-01-15T09:30:00Z",
+		Origin: models.TaxCloudAddress{
+			Line1: "323 Washington Ave N",
+			City:  "Minneapolis",
+			State: "MN",
+			Zip:   "55401-2427",
+		},
+		Destination: models.TaxCloudAddress{
+			Line1: "323 Washington Ave N",
+			City:  "Minneapolis",
+			State: "MN",
+			Zip:   "55401-2427",
+		},
+		LineItems: []models.CartItemWithTax{
+			{
+				Index:    0,
+				ItemID:   "item-1",
+				Price:    10.8,
+				Quantity: 1.5,
+				Tax: models.Tax{
+					Amount: 1.31,
+					Rate:   0.0813,
+				},
+			},
+		},
+		Currency: &models.Currency{},
+	}
+
+	_, err = client.CreateOrder(ctx, orderReq)
+
+	// Should return ErrTaxCloudNotConfigured
+	if err == nil {
+		t.Fatal("Expected error when TaxCloud credentials not configured, got nil")
+	}
+
+	if !errors.Is(err, ErrTaxCloudNotConfigured) {
+		t.Errorf("Expected ErrTaxCloudNotConfigured, got: %v", err)
+	}
+}
+
+func TestCreateOrder_WithCredentials(t *testing.T) {
+	// Create client with TaxCloud credentials
+	client, err := NewClient(
+		"test-api-key",
+		WithTaxCloudConnectionID("test-connection-id"),
+		WithTaxCloudAPIKey("test-taxcloud-key"),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	// Verify credentials are configured
+	if !client.config.HasTaxCloudCredentials() {
+		t.Fatal("TaxCloud credentials should be configured")
+	}
+
+	// Verify the config values are set correctly
+	if client.config.TaxCloudConnectionID != "test-connection-id" {
+		t.Errorf("Expected connection ID 'test-connection-id', got '%s'", client.config.TaxCloudConnectionID)
+	}
+
+	if client.config.TaxCloudAPIKey != "test-taxcloud-key" {
+		t.Errorf("Expected API key 'test-taxcloud-key', got '%s'", client.config.TaxCloudAPIKey)
+	}
+
+	if client.config.TaxCloudBaseURL != DefaultTaxCloudBaseURL {
+		t.Errorf("Expected base URL '%s', got '%s'", DefaultTaxCloudBaseURL, client.config.TaxCloudBaseURL)
+	}
 }

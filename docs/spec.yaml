@@ -30,27 +30,56 @@ project:
 # -----------------------------------------------------------------------------
 # API Configuration
 # -----------------------------------------------------------------------------
+# The SDK now supports TWO APIs:
+# 1. ZipTax API - For tax rate lookups and account metrics (REQUIRED)
+# 2. TaxCloud API - For order management operations (OPTIONAL)
+
 api:
-  # Base API details
-  name: "ZipTax API"
-  version: "v60"
-  base_url: "https://api.zip-tax.com/"
+  # Primary API (ZipTax) - REQUIRED for all SDK functionality
+  ziptax:
+    name: "ZipTax API"
+    version: "v60"
+    base_url: "https://api.zip-tax.com/"
 
-  # API specification source
-  spec:
-    type: "openapi"
-    version: "3.0.0"
-    source: "https://api.zip-tax.com/openapi.json"
+    # API specification source
+    spec:
+      type: "openapi"
+      version: "3.0.0"
+      source: "https://api.zip-tax.com/openapi.json"
 
-  # Authentication methods
-  authentication:
-    type: "api_key"
-    location: "header"
-    parameter_name: "X-API-Key"
+    # Authentication methods
+    authentication:
+      type: "api_key"
+      location: "header"
+      parameter_name: "X-API-Key"
+      required: true
 
-    # Additional auth configurations
-    supports_multiple_methods: false
-    methods: []
+  # Secondary API (TaxCloud) - OPTIONAL for order management
+  taxcloud:
+    name: "TaxCloud API"
+    version: "v3"
+    base_url: "https://api.v3.taxcloud.com/"
+    documentation: "https://docs.taxcloud.com/api-reference/api-reference/sales-tax-api/orders/create-order"
+
+    # Authentication methods
+    authentication:
+      type: "api_key"
+      location: "header"
+      parameter_name: "X-API-Key"
+      required: false  # Only required if using TaxCloud features
+
+    # Additional authentication requirements
+    required_parameters:
+      - name: "connectionId"
+        description: "TaxCloud Connection ID (UUID format) - used in API paths"
+        format: "uuid"
+        example: "25eb9b97-5acb-492d-b720-c03e79cf715a"
+
+    # Feature availability notes
+    notes:
+      - "TaxCloud features are OPTIONAL and only available when both Connection ID and API Key are provided during client initialization"
+      - "Order management functions will return error if TaxCloud credentials not configured"
+      - "Uses Header authentication with the X-API-KEY header for boths APIs, but TaxCloud also requires the connectionId in the path for order endpoints"
 
 # -----------------------------------------------------------------------------
 # SDK Configuration
@@ -224,6 +253,143 @@ resources:
         returns:
           type: "V60PostalCodeResponse"
           is_array: false
+
+      # TaxCloud API Orders Endpoints
+      - name: "CreateOrder"
+        api: "taxcloud"  # Indicates this uses the TaxCloud API
+        http_method: "POST"
+        path: "/tax/connections/{connectionId}/orders"
+        description: "Create orders from marketplace transactions, pre-existing systems, or bulk uploads. Requires TaxCloud Connection ID and API Key configured during client initialization."
+        operation_id: "createOrder"
+        requires_taxcloud: true  # This endpoint requires TaxCloud credentials
+        parameters:
+          - name: "connectionId"
+            type: "string"
+            format: "uuid"
+            required: true
+            location: "path"
+            description: "TaxCloud Connection ID (automatically populated from client configuration)"
+            example: "25eb9b97-5acb-492d-b720-c03e79cf715a"
+          - name: "addressAutocomplete"
+            type: "string"
+            required: false
+            location: "query"
+            description: "The specified addresses will be overridden with first result from address validation search"
+            default: "none"
+            enum: ["none", "origin", "destination", "all"]
+        request_body:
+          type: "CreateOrderRequest"
+          description: "Order details including line items, addresses, and tax information"
+        returns:
+          type: "OrderResponse"
+          is_array: false
+          status_code: 201
+        authentication:
+          type: "header"
+          header: "X-API-KEY"
+          format: "{taxCloudAPIKey}"
+          note: "Uses TaxCloud API Key configured during client initialization"
+
+      - name: "GetOrder"
+        api: "taxcloud"  # Indicates this uses the TaxCloud API
+        http_method: "GET"
+        path: "/tax/connections/{connectionId}/orders/{orderId}"
+        description: "Retrieve a specific order by its ID from TaxCloud. Requires TaxCloud Connection ID and API Key configured during client initialization."
+        operation_id: "getOrder"
+        requires_taxcloud: true  # This endpoint requires TaxCloud credentials
+        parameters:
+          - name: "connectionId"
+            type: "string"
+            format: "uuid"
+            required: true
+            location: "path"
+            description: "TaxCloud Connection ID (automatically populated from client configuration)"
+            example: "25eb9b97-5acb-492d-b720-c03e79cf715a"
+          - name: "orderId"
+            type: "string"
+            required: true
+            location: "path"
+            description: "The ID of the order to retrieve (order ID from external system)"
+            example: "my-order-1"
+        returns:
+          type: "OrderResponse"
+          is_array: false
+          status_code: 200
+        authentication:
+          type: "header"
+          header: "X-API-KEY"
+          format: "{taxCloudAPIKey}"
+          note: "Uses TaxCloud API Key configured during client initialization"
+
+      - name: "UpdateOrder"
+        api: "taxcloud"  # Indicates this uses the TaxCloud API
+        http_method: "PATCH"
+        path: "/tax/connections/{connectionId}/orders/{orderId}"
+        description: "Update an existing order's completedDate in TaxCloud. Use this endpoint to change when an order was shipped/completed. Requires TaxCloud Connection ID and API Key configured during client initialization."
+        operation_id: "updateOrder"
+        requires_taxcloud: true  # This endpoint requires TaxCloud credentials
+        parameters:
+          - name: "connectionId"
+            type: "string"
+            format: "uuid"
+            required: true
+            location: "path"
+            description: "TaxCloud Connection ID (automatically populated from client configuration)"
+            example: "25eb9b97-5acb-492d-b720-c03e79cf715a"
+          - name: "orderId"
+            type: "string"
+            required: true
+            location: "path"
+            description: "The ID of the order to update (order ID from external system)"
+            example: "my-order-1"
+        request_body:
+          type: "UpdateOrderRequest"
+          description: "Update order details (currently only completedDate can be updated)"
+        returns:
+          type: "OrderResponse"
+          is_array: false
+          status_code: 200
+        authentication:
+          type: "header"
+          header: "X-API-KEY"
+          format: "{taxCloudAPIKey}"
+          note: "Uses TaxCloud API Key configured during client initialization"
+
+      # TaxCloud API Refunds Endpoint
+      - name: "RefundOrder"
+        api: "taxcloud"  # Indicates this uses the TaxCloud API
+        http_method: "POST"
+        path: "/tax/connections/{connectionId}/orders/refunds/{orderId}"
+        description: "Create a refund against an order in TaxCloud. An order can only be refunded once, regardless of whether the order is partially or fully refunded. Requires TaxCloud Connection ID and API Key configured during client initialization."
+        operation_id: "refundOrder"
+        requires_taxcloud: true  # This endpoint requires TaxCloud credentials
+        parameters:
+          - name: "connectionId"
+            type: "string"
+            format: "uuid"
+            required: true
+            location: "path"
+            description: "TaxCloud Connection ID (automatically populated from client configuration)"
+            example: "25eb9b97-5acb-492d-b720-c03e79cf715a"
+          - name: "orderId"
+            type: "string"
+            required: true
+            location: "path"
+            description: "The ID of the order to refund against"
+            example: "my-order-1"
+        request_body:
+          type: "RefundTransactionRequest"
+          description: "Refund details including items to refund (empty or omitted items means full refund)"
+        returns:
+          type: "array"
+          items_type: "RefundTransactionResponse"
+          is_array: true
+          status_code: 201
+        authentication:
+          type: "header"
+          header: "X-API-KEY"
+          format: "{taxCloudAPIKey}"
+          note: "Uses TaxCloud API Key configured during client initialization"
 
 # -----------------------------------------------------------------------------
 # Data Models
@@ -777,6 +943,436 @@ models:
         api_field: "geoLng"
         description: "Longitude (0 for postal code lookups)"
 
+  # ---------------------------------------------------------------------------
+  # TaxCloud API Models - Order Management
+  # ---------------------------------------------------------------------------
+  - name: "CreateOrderRequest"
+    description: "Request payload for creating an order in TaxCloud"
+    api: "taxcloud"
+    properties:
+      - name: "orderId"
+        type: "string"
+        required: true
+        description: "Order ID in external system"
+        example: "my-order-1"
+      - name: "customerId"
+        type: "string"
+        required: true
+        description: "Customer ID in external system"
+        example: "customer-453"
+      - name: "transactionDate"
+        type: "string"
+        format: "date-time"
+        required: true
+        description: "RFC3339 datetime string when order was purchased"
+        example: "2024-01-15T09:30:00Z"
+      - name: "completedDate"
+        type: "string"
+        format: "date-time"
+        required: true
+        description: "RFC3339 datetime string when order was shipped/completed (created tax liability)"
+        example: "2024-01-15T09:30:00Z"
+      - name: "origin"
+        type: "TaxCloudAddress"
+        required: true
+        description: "Origin address of the order"
+      - name: "destination"
+        type: "TaxCloudAddress"
+        required: true
+        description: "Destination address of the order"
+      - name: "lineItems"
+        type: "array"
+        items_type: "CartItemWithTax"
+        required: true
+        description: "Array of line items in the order with tax calculations"
+      - name: "currency"
+        type: "Currency"
+        required: true
+        description: "Currency information for the order"
+      - name: "channel"
+        type: "string"
+        required: false
+        description: "Sales channel (e.g., amazon, ebay, walmart) for tax exclusion rules"
+        example: "amazon"
+      - name: "deliveredBySeller"
+        type: "boolean"
+        required: false
+        description: "Whether the seller directly delivered the order"
+      - name: "excludeFromFiling"
+        type: "boolean"
+        required: false
+        description: "Whether to exclude this order from tax filing"
+        default: false
+      - name: "exemption"
+        type: "Exemption"
+        required: false
+        description: "Exemption certificate information for the order"
+
+  - name: "OrderResponse"
+    description: "Response after successfully creating an order in TaxCloud"
+    api: "taxcloud"
+    properties:
+      - name: "orderId"
+        type: "string"
+        required: true
+        description: "Order ID in external system"
+      - name: "customerId"
+        type: "string"
+        required: true
+        description: "Customer ID in external system"
+      - name: "connectionId"
+        type: "string"
+        required: true
+        description: "TaxCloud connection ID used for this order"
+      - name: "transactionDate"
+        type: "string"
+        format: "date-time"
+        required: true
+        description: "RFC3339 datetime string when order was purchased"
+      - name: "completedDate"
+        type: "string"
+        format: "date-time"
+        required: true
+        description: "RFC3339 datetime string when order was shipped/completed"
+      - name: "origin"
+        type: "TaxCloudAddressResponse"
+        required: true
+        description: "Origin address of the order"
+      - name: "destination"
+        type: "TaxCloudAddressResponse"
+        required: true
+        description: "Destination address of the order"
+      - name: "lineItems"
+        type: "array"
+        items_type: "CartItemWithTaxResponse"
+        required: true
+        description: "Array of line items with tax calculations"
+      - name: "currency"
+        type: "CurrencyResponse"
+        required: true
+        description: "Currency information"
+      - name: "channel"
+        type: "string"
+        required: true
+        description: "Sales channel for the order"
+      - name: "deliveredBySeller"
+        type: "boolean"
+        required: true
+        description: "Whether seller directly delivered the order"
+      - name: "excludeFromFiling"
+        type: "boolean"
+        required: true
+        default: false
+        description: "Whether order is excluded from tax filing"
+      - name: "exemption"
+        type: "Exemption"
+        required: true
+        description: "Exemption information"
+
+  - name: "TaxCloudAddress"
+    description: "Address structure for TaxCloud orders"
+    api: "taxcloud"
+    properties:
+      - name: "line1"
+        type: "string"
+        required: true
+        description: "First line of address (street, PO Box, or building)"
+        example: "323 Washington Ave N"
+      - name: "line2"
+        type: "string"
+        required: false
+        description: "Second line of address (apartment or suite number)"
+      - name: "city"
+        type: "string"
+        required: true
+        description: "City or post-town"
+        example: "Minneapolis"
+      - name: "state"
+        type: "string"
+        required: true
+        description: "State, province, county or large territorial division"
+        example: "MN"
+      - name: "zip"
+        type: "string"
+        required: true
+        description: "Postal or ZIP code"
+        example: "55401-2427"
+      - name: "countryCode"
+        type: "string"
+        required: false
+        description: "ISO 3166-1 alpha-2 country code"
+        default: "US"
+        enum: ["US", "CA"]
+
+  - name: "TaxCloudAddressResponse"
+    description: "Address response structure from TaxCloud"
+    api: "taxcloud"
+    properties:
+      - name: "line1"
+        type: "string"
+        required: true
+        description: "First line of address"
+      - name: "line2"
+        type: "string"
+        required: false
+        description: "Second line of address"
+      - name: "city"
+        type: "string"
+        required: true
+        description: "City or post-town"
+      - name: "state"
+        type: "string"
+        required: true
+        description: "State abbreviation"
+      - name: "zip"
+        type: "string"
+        required: true
+        description: "Postal or ZIP code"
+      - name: "countryCode"
+        type: "string"
+        required: true
+        default: "US"
+        description: "ISO 3166-1 alpha-2 country code"
+
+  - name: "CartItemWithTax"
+    description: "Cart line item with tax calculation for order creation"
+    api: "taxcloud"
+    properties:
+      - name: "index"
+        type: "integer"
+        format: "int64"
+        required: true
+        description: "Position/index of item within the cart"
+        example: 0
+      - name: "itemId"
+        type: "string"
+        required: true
+        description: "Unique identifier for the cart item"
+        example: "item-1"
+      - name: "price"
+        type: "number"
+        format: "float"
+        required: true
+        description: "Unit price of the item"
+        example: 10.8
+      - name: "quantity"
+        type: "number"
+        format: "float"
+        required: true
+        description: "Quantity of the item"
+        example: 1.5
+      - name: "tax"
+        type: "Tax"
+        required: true
+        description: "Tax information for the item"
+      - name: "productId"
+        type: "string"
+        required: false
+        description: "Product ID from product catalog (must match existing product)"
+      - name: "tic"
+        type: "integer"
+        format: "int64"
+        required: false
+        description: "Taxability Information Code (defaults to 0 if not provided)"
+        default: 0
+
+  - name: "CartItemWithTaxResponse"
+    description: "Cart line item response from TaxCloud"
+    api: "taxcloud"
+    properties:
+      - name: "index"
+        type: "integer"
+        format: "int64"
+        required: true
+        description: "Position/index of item within the cart"
+      - name: "itemId"
+        type: "string"
+        required: true
+        description: "Unique identifier for the cart item"
+      - name: "price"
+        type: "number"
+        format: "float"
+        required: true
+        description: "Unit price of the item"
+      - name: "quantity"
+        type: "number"
+        format: "float"
+        required: true
+        description: "Quantity of the item"
+      - name: "tax"
+        type: "Tax"
+        required: true
+        description: "Tax information for the item"
+      - name: "tic"
+        type: "integer"
+        format: "int64"
+        required: true
+        description: "Taxability Information Code"
+
+  - name: "Tax"
+    description: "Tax calculation details for a cart item"
+    api: "taxcloud"
+    properties:
+      - name: "amount"
+        type: "number"
+        format: "float"
+        required: true
+        description: "Tax amount calculated for the item"
+        example: 1.31
+      - name: "rate"
+        type: "number"
+        format: "float"
+        required: true
+        description: "Tax rate applied (decimal format)"
+        example: 0.0813
+
+  - name: "Currency"
+    description: "Currency information for order"
+    api: "taxcloud"
+    properties:
+      - name: "currencyCode"
+        type: "string"
+        required: false
+        description: "ISO currency code"
+        default: "USD"
+        enum: ["USD", "CAD"]
+
+  - name: "CurrencyResponse"
+    description: "Currency response from TaxCloud"
+    api: "taxcloud"
+    properties:
+      - name: "currencyCode"
+        type: "string"
+        required: true
+        description: "ISO currency code"
+
+  - name: "Exemption"
+    description: "Tax exemption certificate information"
+    api: "taxcloud"
+    properties:
+      - name: "exemptionId"
+        type: "string"
+        required: false
+        description: "ID of exemption certificate used for customer (if provided, isExempt assumed true)"
+      - name: "isExempt"
+        type: "boolean"
+        required: false
+        description: "Whether customer is exempt from tax"
+
+  - name: "UpdateOrderRequest"
+    description: "Request payload for updating an order in TaxCloud (currently only completedDate can be updated)"
+    api: "taxcloud"
+    properties:
+      - name: "completedDate"
+        type: "string"
+        format: "date-time"
+        required: true
+        description: "RFC3339 datetime string when order was shipped/completed (creates tax liability)"
+        example: "2024-01-16T10:00:00Z"
+
+  # ---------------------------------------------------------------------------
+  # TaxCloud API Models - Refunds
+  # ---------------------------------------------------------------------------
+  - name: "RefundTransactionRequest"
+    description: "Request payload for creating a refund against an order in TaxCloud"
+    api: "taxcloud"
+    properties:
+      - name: "items"
+        type: "array"
+        items_type: "CartItemRefundWithTaxRequest"
+        required: false
+        description: "Items to refund. If empty list or omitted, entire order will be refunded"
+      - name: "returnedDate"
+        type: "string"
+        format: "date-time"
+        required: false
+        description: "Include only if this return is a change to a previously filed sales tax return (triggers Amended Sales Tax Return - not typically recommended)"
+
+  - name: "CartItemRefundWithTaxRequest"
+    description: "Cart line item to be refunded"
+    api: "taxcloud"
+    properties:
+      - name: "itemId"
+        type: "string"
+        required: true
+        description: "Unique identifier for the cart item to refund"
+        example: "item-1"
+      - name: "quantity"
+        type: "number"
+        format: "float"
+        required: true
+        description: "Quantity of the item to refund"
+        example: 1.0
+
+  - name: "RefundTransactionResponse"
+    description: "Response after successfully creating a refund in TaxCloud"
+    api: "taxcloud"
+    properties:
+      - name: "connectionId"
+        type: "string"
+        required: true
+        description: "TaxCloud connection ID used for this refund"
+      - name: "createdDate"
+        type: "string"
+        format: "date-time"
+        required: true
+        description: "RFC3339 datetime string when the refund was created"
+      - name: "items"
+        type: "array"
+        items_type: "CartItemRefundWithTaxResponse"
+        required: true
+        description: "Array of refunded line items with tax calculations"
+      - name: "returnedDate"
+        type: "string"
+        format: "date-time"
+        required: false
+        description: "RFC3339 datetime string when the refund took effect"
+
+  - name: "CartItemRefundWithTaxResponse"
+    description: "Refunded cart line item response from TaxCloud"
+    api: "taxcloud"
+    properties:
+      - name: "index"
+        type: "integer"
+        format: "int64"
+        required: true
+        description: "Position/index of item within the cart"
+      - name: "itemId"
+        type: "string"
+        required: true
+        description: "Unique identifier for the cart item"
+      - name: "price"
+        type: "number"
+        format: "float"
+        required: true
+        description: "Price of the refunded item"
+      - name: "quantity"
+        type: "number"
+        format: "float"
+        required: true
+        description: "Quantity of the item refunded"
+      - name: "tax"
+        type: "RefundTax"
+        required: true
+        description: "Tax information for the refunded item"
+      - name: "tic"
+        type: "integer"
+        format: "int64"
+        required: false
+        default: 0
+        description: "Taxability Information Code"
+
+  - name: "RefundTax"
+    description: "Tax details for a refunded item"
+    api: "taxcloud"
+    properties:
+      - name: "amount"
+        type: "number"
+        format: "float"
+        required: true
+        description: "Tax amount refunded for the item"
+        example: 1.31
+
 
 # -----------------------------------------------------------------------------
 # Dependencies
@@ -1078,7 +1674,7 @@ instructions:
   patterns:
     - pattern: "Client initialization with functional options"
       example: |
-        // Create a new client with API key
+        // Create a new client with ZipTax API key only (tax rate lookups)
         client := ziptax.NewClient(apiKey)
 
         // Or with options
@@ -1086,6 +1682,22 @@ instructions:
             apiKey,
             ziptax.WithTimeout(30*time.Second),
             ziptax.WithRetry(3),
+        )
+
+        // Create client with TaxCloud credentials for order management
+        client := ziptax.NewClient(
+            apiKey,
+            ziptax.WithTaxCloudConnectionID("25eb9b97-5acb-492d-b720-c03e79cf715a"),
+            ziptax.WithTaxCloudAPIKey("taxcloud-api-key-here"),
+        )
+
+        // Full configuration with both APIs
+        client := ziptax.NewClient(
+            apiKey,
+            ziptax.WithTimeout(30*time.Second),
+            ziptax.WithRetry(3),
+            ziptax.WithTaxCloudConnectionID("25eb9b97-5acb-492d-b720-c03e79cf715a"),
+            ziptax.WithTaxCloudAPIKey("taxcloud-api-key-here"),
         )
 
     - pattern: "Context-based API calls"
@@ -1348,6 +1960,190 @@ actual_api_responses:
           "geoLng": 0
         }
       }
+
+  taxcloud_create_order:
+    description: "Actual TaxCloud response for CreateOrder"
+    endpoint: "POST /tax/connections/{connectionId}/orders"
+    example: |
+      {
+        "orderId": "my-order-1",
+        "customerId": "customer-453",
+        "connectionId": "25eb9b97-5acb-492d-b720-c03e79cf715a",
+        "transactionDate": "2024-01-15T09:30:00Z",
+        "completedDate": "2024-01-15T09:30:00Z",
+        "origin": {
+          "line1": "323 Washington Ave N",
+          "city": "Minneapolis",
+          "state": "MN",
+          "zip": "55401-2427",
+          "countryCode": "US"
+        },
+        "destination": {
+          "line1": "323 Washington Ave N",
+          "city": "Minneapolis",
+          "state": "MN",
+          "zip": "55401-2427",
+          "countryCode": "US"
+        },
+        "lineItems": [
+          {
+            "index": 0,
+            "itemId": "item-1",
+            "price": 10.8,
+            "quantity": 1.5,
+            "tax": {
+              "amount": 1.31,
+              "rate": 0.0813
+            },
+            "tic": 0
+          }
+        ],
+        "currency": {
+          "currencyCode": "USD"
+        },
+        "channel": null,
+        "deliveredBySeller": false,
+        "excludeFromFiling": false,
+        "exemption": {
+          "exemptionId": null,
+          "isExempt": null
+        }
+      }
+
+  taxcloud_get_order:
+    description: "Actual TaxCloud response for GetOrder by ID"
+    endpoint: "GET /tax/connections/{connectionId}/orders/{orderId}"
+    example: |
+      {
+        "orderId": "my-order-1",
+        "customerId": "customer-453",
+        "connectionId": "25eb9b97-5acb-492d-b720-c03e79cf715a",
+        "transactionDate": "2024-01-15T09:30:00Z",
+        "completedDate": "2024-01-15T09:30:00Z",
+        "origin": {
+          "line1": "323 Washington Ave N",
+          "city": "Minneapolis",
+          "state": "MN",
+          "zip": "55401-2427",
+          "countryCode": "US"
+        },
+        "destination": {
+          "line1": "323 Washington Ave N",
+          "city": "Minneapolis",
+          "state": "MN",
+          "zip": "55401-2427",
+          "countryCode": "US"
+        },
+        "lineItems": [
+          {
+            "index": 0,
+            "itemId": "item-1",
+            "price": 10.8,
+            "quantity": 1.5,
+            "tax": {
+              "amount": 1.31,
+              "rate": 0.0813
+            },
+            "tic": 0
+          }
+        ],
+        "currency": {
+          "currencyCode": "USD"
+        },
+        "channel": null,
+        "deliveredBySeller": false,
+        "excludeFromFiling": false,
+        "exemption": {
+          "exemptionId": null,
+          "isExempt": null
+        }
+      }
+
+  taxcloud_update_order:
+    description: "Actual TaxCloud response for UpdateOrder (updating completedDate)"
+    endpoint: "PATCH /tax/connections/{connectionId}/orders/{orderId}"
+    request_example: |
+      {
+        "completedDate": "2024-01-16T10:00:00Z"
+      }
+    response_example: |
+      {
+        "orderId": "my-order-1",
+        "customerId": "customer-453",
+        "connectionId": "25eb9b97-5acb-492d-b720-c03e79cf715a",
+        "transactionDate": "2024-01-15T09:30:00Z",
+        "completedDate": "2024-01-16T10:00:00Z",
+        "origin": {
+          "line1": "323 Washington Ave N",
+          "city": "Minneapolis",
+          "state": "MN",
+          "zip": "55401-2427",
+          "countryCode": "US"
+        },
+        "destination": {
+          "line1": "323 Washington Ave N",
+          "city": "Minneapolis",
+          "state": "MN",
+          "zip": "55401-2427",
+          "countryCode": "US"
+        },
+        "lineItems": [
+          {
+            "index": 0,
+            "itemId": "item-1",
+            "price": 10.8,
+            "quantity": 1.5,
+            "tax": {
+              "amount": 1.31,
+              "rate": 0.0813
+            },
+            "tic": 0
+          }
+        ],
+        "currency": {
+          "currencyCode": "USD"
+        },
+        "channel": null,
+        "deliveredBySeller": false,
+        "excludeFromFiling": false,
+        "exemption": {
+          "exemptionId": null,
+          "isExempt": null
+        }
+      }
+
+  taxcloud_refund_order:
+    description: "Actual TaxCloud response for RefundOrder (array of refund transactions)"
+    endpoint: "POST /tax/connections/{connectionId}/orders/refunds/{orderId}"
+    request_example: |
+      {
+        "items": [
+          {
+            "itemId": "item-1",
+            "quantity": 1.0
+          }
+        ]
+      }
+    response_example: |
+      [
+        {
+          "connectionId": "25eb9b97-5acb-492d-b720-c03e79cf715a",
+          "createdDate": "2024-01-17T14:30:00Z",
+          "items": [
+            {
+              "index": 0,
+              "itemId": "item-1",
+              "price": 10.8,
+              "quantity": 1.0,
+              "tax": {
+                "amount": 0.87
+              },
+              "tic": 0
+            }
+          ],
+          "returnedDate": "2024-01-17T14:30:00Z"
+        }
+      ]
 
 # -----------------------------------------------------------------------------
 # CI/CD Quality Requirements

@@ -30,6 +30,9 @@ var (
 
 	// ErrContextCanceled indicates that the context was canceled.
 	ErrContextCanceled = errors.New("context canceled")
+
+	// ErrTaxCloudNotConfigured indicates that TaxCloud credentials are not configured.
+	ErrTaxCloudNotConfigured = errors.New("TaxCloud credentials not configured: both Connection ID and API Key are required for order operations")
 )
 
 // APIError represents an error response from the ZipTax API.

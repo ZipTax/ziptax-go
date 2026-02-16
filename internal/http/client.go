@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -94,6 +95,160 @@ func (c *Client) Get(ctx context.Context, path string, queryParams map[string]st
 	// Parse JSON response
 	if err := json.Unmarshal(body, result); err != nil {
 		return fmt.Errorf("failed to parse JSON response: %w", err)
+	}
+
+	return nil
+}
+
+// Post performs a POST request with JSON body.
+func (c *Client) Post(ctx context.Context, baseURL, path string, headers map[string]string, body, result interface{}) error {
+	// Marshal request body to JSON
+	var bodyBytes []byte
+	var err error
+	if body != nil {
+		bodyBytes, err = json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("failed to marshal request body: %w", err)
+		}
+	}
+
+	// Build URL
+	u, err := url.Parse(baseURL + path)
+	if err != nil {
+		return fmt.Errorf("failed to parse URL: %w", err)
+	}
+
+	// Create request with body
+	var bodyReader io.Reader
+	if len(bodyBytes) > 0 {
+		bodyReader = bytes.NewReader(bodyBytes)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bodyReader)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set default headers
+	req.Header.Set("User-Agent", c.UserAgent)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	// Set custom headers (including authentication)
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+
+	// Log request if logger is available
+	if c.Logger != nil {
+		c.Logger.Printf("Request: %s %s", req.Method, req.URL.String())
+	}
+
+	// Execute request with retry
+	resp, err := DoWithRetry(ctx, c.HTTPClient, req, c.RetryPolicy)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Log response if logger is available
+	if c.Logger != nil {
+		c.Logger.Printf("Response: %d %s", resp.StatusCode, resp.Status)
+	}
+
+	// Read response body
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Check status code (201 Created is valid for POST requests)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return c.handleErrorResponse(resp.StatusCode, respBody)
+	}
+
+	// Parse JSON response if result is provided
+	if result != nil {
+		if err := json.Unmarshal(respBody, result); err != nil {
+			return fmt.Errorf("failed to parse JSON response: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// Patch performs a PATCH request with JSON body.
+func (c *Client) Patch(ctx context.Context, baseURL, path string, headers map[string]string, body, result interface{}) error {
+	// Marshal request body to JSON
+	var bodyBytes []byte
+	var err error
+	if body != nil {
+		bodyBytes, err = json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("failed to marshal request body: %w", err)
+		}
+	}
+
+	// Build URL
+	u, err := url.Parse(baseURL + path)
+	if err != nil {
+		return fmt.Errorf("failed to parse URL: %w", err)
+	}
+
+	// Create request with body
+	var bodyReader io.Reader
+	if len(bodyBytes) > 0 {
+		bodyReader = bytes.NewReader(bodyBytes)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, u.String(), bodyReader)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set default headers
+	req.Header.Set("User-Agent", c.UserAgent)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	// Set custom headers (including authentication)
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+
+	// Log request if logger is available
+	if c.Logger != nil {
+		c.Logger.Printf("Request: %s %s", req.Method, req.URL.String())
+	}
+
+	// Execute request with retry
+	resp, err := DoWithRetry(ctx, c.HTTPClient, req, c.RetryPolicy)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Log response if logger is available
+	if c.Logger != nil {
+		c.Logger.Printf("Response: %d %s", resp.StatusCode, resp.Status)
+	}
+
+	// Read response body
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Check status code (200 OK is valid for PATCH requests)
+	if resp.StatusCode != http.StatusOK {
+		return c.handleErrorResponse(resp.StatusCode, respBody)
+	}
+
+	// Parse JSON response if result is provided
+	if result != nil {
+		if err := json.Unmarshal(respBody, result); err != nil {
+			return fmt.Errorf("failed to parse JSON response: %w", err)
+		}
 	}
 
 	return nil

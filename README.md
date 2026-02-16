@@ -17,6 +17,7 @@ Official Go SDK for the [ZipTax API](https://zip.tax/) - get accurate sales and 
 - 🔐 Secure API key authentication
 - 🌐 Support for US and Canadian addresses
 - 📍 Geolocation-based lookups
+- 📦 **TaxCloud Order Management** - Create, retrieve, update, and refund orders
 
 ## Installation
 
@@ -63,7 +64,7 @@ func main() {
 
 ### Client Initialization
 
-Create a client with default settings:
+Create a client with default settings (ZipTax API only):
 
 ```go
 client, err := ziptax.NewClient("your-api-key")
@@ -77,6 +78,18 @@ client, err := ziptax.NewClient(
     ziptax.WithTimeout(60*time.Second),
     ziptax.WithMaxRetries(5),
     ziptax.WithRetryWait(2*time.Second, 60*time.Second),
+)
+```
+
+**Enable TaxCloud Order Management (Optional):**
+
+To use TaxCloud order features, provide both TaxCloud credentials during initialization:
+
+```go
+client, err := ziptax.NewClient(
+    "your-ziptax-api-key",
+    ziptax.WithTaxCloudConnectionID("your-taxcloud-connection-id"),
+    ziptax.WithTaxCloudAPIKey("your-taxcloud-api-key"),
 )
 ```
 
@@ -111,6 +124,15 @@ response, err := client.GetSalesTaxByGeoLocation(
 )
 ```
 
+### Get Rates by Postal Code
+
+```go
+response, err := client.GetRatesByPostalCode(ctx, "92694")
+for _, result := range response.Results {
+    fmt.Printf("City: %s, Total Tax Rate: %.4f%%\n", result.GeoCity, result.TaxSales*100)
+}
+```
+
 ### Get Account Metrics
 
 ```go
@@ -118,6 +140,120 @@ metrics, err := client.GetAccountMetrics(ctx)
 fmt.Printf("Core Usage: %.2f%%\n", metrics.CoreUsagePercent)
 fmt.Printf("Geo Usage: %.2f%%\n", metrics.GeoUsagePercent)
 ```
+
+## TaxCloud Order Management
+
+The SDK supports comprehensive order lifecycle management through the TaxCloud API. To use these features, you must configure TaxCloud credentials during client initialization.
+
+### Create Order
+
+Create a new order for tax filing:
+
+```go
+orderReq := &models.CreateOrderRequest{
+    OrderID:         "order-123",
+    CustomerID:      "customer-456",
+    TransactionDate: "2024-01-15T09:30:00Z",
+    CompletedDate:   "2024-01-15T09:30:00Z",
+    Origin: models.TaxCloudAddress{
+        Line1: "200 Spectrum Center Drive Suite 300",
+        City:  "Irvine",
+        State: "CA",
+        Zip:   "92618",
+    },
+    Destination: models.TaxCloudAddress{
+        Line1: "323 Washington Ave N",
+        City:  "Minneapolis",
+        State: "MN",
+        Zip:   "55401-2427",
+    },
+    LineItems: []models.CartItemWithTax{
+        {
+            Index:    0,
+            ItemID:   "item-1",
+            Price:    10.8,
+            Quantity: 1.5,
+            Tax: models.Tax{
+                Amount: 1.31,
+                Rate:   0.0813,
+            },
+        },
+    },
+    Currency: &models.Currency{},
+}
+
+response, err := client.CreateOrder(ctx, orderReq)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Order created: %s\n", response.OrderID)
+```
+
+### Get Order
+
+Retrieve an existing order by ID:
+
+```go
+order, err := client.GetOrder(ctx, "order-123")
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Order %s has %d line items\n", order.OrderID, len(order.LineItems))
+```
+
+### Update Order
+
+Update an order's completed date (when it was shipped/completed):
+
+```go
+updateReq := &models.UpdateOrderRequest{
+    CompletedDate: "2024-01-16T10:00:00Z",
+}
+
+order, err := client.UpdateOrder(ctx, "order-123", updateReq)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Order updated with new completed date: %s\n", order.CompletedDate)
+```
+
+### Refund Order
+
+Create a full or partial refund against an order:
+
+**Partial Refund:**
+
+```go
+refundReq := &models.RefundTransactionRequest{
+    Items: []models.CartItemRefundWithTaxRequest{
+        {
+            ItemID:   "item-1",
+            Quantity: 1.0,
+        },
+    },
+}
+
+refunds, err := client.RefundOrder(ctx, "order-123", refundReq)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Refunded %d items\n", len(refunds[0].Items))
+```
+
+**Full Refund:**
+
+```go
+// Empty request for full order refund
+refundReq := &models.RefundTransactionRequest{}
+
+refunds, err := client.RefundOrder(ctx, "order-123", refundReq)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Full order refund created\n")
+```
+
+**Note:** An order can only be refunded once, regardless of whether it's a partial or full refund.
 
 ## Error Handling
 
@@ -143,6 +279,12 @@ if err != nil {
     // Check for sentinel errors
     if errors.Is(err, ziptax.ErrInvalidAPIKey) {
         fmt.Println("Invalid API key")
+        return
+    }
+
+    // Check for TaxCloud errors
+    if errors.Is(err, ziptax.ErrTaxCloudNotConfigured) {
+        fmt.Println("TaxCloud credentials not configured")
         return
     }
 
@@ -202,6 +344,7 @@ wg.Wait()
 
 ### Client Options
 
+**Core Options:**
 - `WithBaseURL(url string)` - Set a custom API base URL
 - `WithHTTPClient(client *http.Client)` - Use a custom HTTP client
 - `WithTimeout(timeout time.Duration)` - Set request timeout
@@ -209,6 +352,11 @@ wg.Wait()
 - `WithRetryWait(min, max time.Duration)` - Set retry backoff times
 - `WithLogger(logger Logger)` - Enable request/response logging
 - `WithUserAgent(ua string)` - Set a custom User-Agent header
+
+**TaxCloud Options:**
+- `WithTaxCloudConnectionID(id string)` - Set TaxCloud Connection ID (required for order management)
+- `WithTaxCloudAPIKey(key string)` - Set TaxCloud API Key (required for order management)
+- `WithTaxCloudBaseURL(url string)` - Set custom TaxCloud API base URL
 
 ### Request Options
 
@@ -224,6 +372,7 @@ See the [examples](./examples) directory for complete examples:
 - [Concurrent Usage](./examples/concurrent_usage) - Parallel requests with goroutines
 - [Error Handling](./examples/error_handling) - Proper error handling patterns
 - [Context Timeout](./examples/context_timeout) - Using context for timeouts and cancellation
+- [TaxCloud Order](./examples/taxcloud_order) - TaxCloud order management operations
 
 ## API Reference
 
@@ -272,9 +421,32 @@ make check
 make build
 ```
 
+## Versioning
+
+This project follows [Semantic Versioning](https://semver.org/). The version is defined in [`version.go`](./version.go).
+
+### Version Format: `MAJOR.MINOR.PATCH`
+
+- **MAJOR**: Breaking changes (incompatible API changes)
+- **MINOR**: New features (backward compatible)
+- **PATCH**: Bug fixes (backward compatible)
+
+### For Contributors
+
+When submitting a PR, you must bump the version in `version.go`. See [`.github/VERSION_BUMP_GUIDE.md`](./.github/VERSION_BUMP_GUIDE.md) for detailed instructions.
+
+The GitHub Actions workflow will automatically verify that the semantic version has been properly bumped.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+**Before submitting:**
+1. Update the version in `version.go` following semantic versioning
+2. Add tests for new functionality
+3. Update documentation (README, GoDoc comments)
+4. Ensure all tests pass (`make test`)
+5. Run linter (`make lint`)
 
 ## License
 
