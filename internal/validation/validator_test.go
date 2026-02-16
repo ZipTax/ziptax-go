@@ -145,6 +145,21 @@ func TestValidateHistoricalDate(t *testing.T) {
 			date:    "January 2024",
 			wantErr: true,
 		},
+		{
+			name:    "invalid month - 00",
+			date:    "2024-00",
+			wantErr: true,
+		},
+		{
+			name:    "invalid month - 13",
+			date:    "2024-13",
+			wantErr: true,
+		},
+		{
+			name:    "valid month - 12",
+			date:    "2024-12",
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -330,6 +345,42 @@ func TestValidatePostalCode(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestNormalizePostalCode(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "5-digit postal code unchanged",
+			input:    "92694",
+			expected: "92694",
+		},
+		{
+			name:     "9-digit postal code stripped to 5-digit",
+			input:    "92694-1234",
+			expected: "92694",
+		},
+		{
+			name:     "postal code with whitespace trimmed",
+			input:    "  92694  ",
+			expected: "92694",
+		},
+		{
+			name:     "9-digit with whitespace",
+			input:    "  92694-1234  ",
+			expected: "92694",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := NormalizePostalCode(tt.input)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }

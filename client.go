@@ -2,10 +2,8 @@ package ziptax
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
-	"net/http"
 
 	internalhttp "github.com/ziptax/ziptax-go/internal/http"
 	"github.com/ziptax/ziptax-go/internal/validation"
@@ -138,7 +136,7 @@ func (c *Client) GetSalesTaxByAddress(ctx context.Context, address string, opts 
 	// Make request
 	var response models.V60Response
 	if err := c.httpClient.Get(ctx, "/request/v60", queryParams, &response); err != nil {
-		return nil, fmt.Errorf("failed to get sales tax by address: %w", err)
+		return nil, wrapError("failed to get sales tax by address", err)
 	}
 
 	return &response, nil
@@ -211,7 +209,7 @@ func (c *Client) GetSalesTaxByGeoLocation(ctx context.Context, lat, lng string, 
 	// Make request
 	var response models.V60Response
 	if err := c.httpClient.Get(ctx, "/request/v60", queryParams, &response); err != nil {
-		return nil, fmt.Errorf("failed to get sales tax by geolocation: %w", err)
+		return nil, wrapError("failed to get sales tax by geolocation", err)
 	}
 
 	return &response, nil
@@ -230,7 +228,7 @@ func (c *Client) GetSalesTaxByGeoLocation(ctx context.Context, lat, lng string, 
 func (c *Client) GetAccountMetrics(ctx context.Context) (*models.V60AccountMetrics, error) {
 	var metrics models.V60AccountMetrics
 	if err := c.httpClient.Get(ctx, "/account/v60/metrics", nil, &metrics); err != nil {
-		return nil, fmt.Errorf("failed to get account metrics: %w", err)
+		return nil, wrapError("failed to get account metrics", err)
 	}
 
 	return &metrics, nil
@@ -259,6 +257,9 @@ func (c *Client) GetRatesByPostalCode(ctx context.Context, postalCode string, op
 		}
 	}
 
+	// Strip 9-digit suffix if present (API only supports 5-digit postal codes)
+	postalCode = validation.NormalizePostalCode(postalCode)
+
 	// Build request options
 	reqOpts := &RequestOptions{}
 	for _, opt := range opts {
@@ -285,7 +286,7 @@ func (c *Client) GetRatesByPostalCode(ctx context.Context, postalCode string, op
 	// Make request
 	var response models.V60PostalCodeResponse
 	if err := c.httpClient.Get(ctx, "/request/v60", queryParams, &response); err != nil {
-		return nil, fmt.Errorf("failed to get rates by postal code: %w", err)
+		return nil, wrapError("failed to get rates by postal code", err)
 	}
 
 	return &response, nil
@@ -381,7 +382,7 @@ func (c *Client) CreateOrder(ctx context.Context, request *models.CreateOrderReq
 	// Make the POST request to TaxCloud API
 	var response models.OrderResponse
 	if err := c.httpClient.Post(ctx, c.config.TaxCloudBaseURL, path, headers, request, &response); err != nil {
-		return nil, fmt.Errorf("failed to create order: %w", err)
+		return nil, wrapError("failed to create order", err)
 	}
 
 	return &response, nil
@@ -407,42 +408,15 @@ func (c *Client) GetOrder(ctx context.Context, orderID string) (*models.OrderRes
 	// Build the path with connection ID and order ID
 	path := fmt.Sprintf("/tax/connections/%s/orders/%s", c.config.TaxCloudConnectionID, orderID)
 
-	// Build URL
-	u := c.config.TaxCloudBaseURL + path
-
-	// Create request
-	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+	// Set up authentication headers
+	headers := map[string]string{
+		"X-API-Key": c.config.TaxCloudAPIKey,
 	}
 
-	// Set headers
-	req.Header.Set("X-API-Key", c.config.TaxCloudAPIKey)
-	req.Header.Set("User-Agent", "ziptax-go/1.0.0")
-	req.Header.Set("Accept", "application/json")
-
-	// Execute request
-	resp, err := c.httpClient.HTTPClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Read response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	// Check status code
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
-	}
-
-	// Parse response
+	// Make the GET request to TaxCloud API
 	var response models.OrderResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse JSON response: %w", err)
+	if err := c.httpClient.GetWithOptions(ctx, c.config.TaxCloudBaseURL, path, headers, &response); err != nil {
+		return nil, wrapError("failed to get order", err)
 	}
 
 	return &response, nil
@@ -480,7 +454,7 @@ func (c *Client) UpdateOrder(ctx context.Context, orderID string, request *model
 	// Make the PATCH request to TaxCloud API
 	var response models.OrderResponse
 	if err := c.httpClient.Patch(ctx, c.config.TaxCloudBaseURL, path, headers, request, &response); err != nil {
-		return nil, fmt.Errorf("failed to update order: %w", err)
+		return nil, wrapError("failed to update order", err)
 	}
 
 	return &response, nil
@@ -529,8 +503,23 @@ func (c *Client) RefundOrder(ctx context.Context, orderID string, request *model
 	// Make the POST request to TaxCloud API
 	var response []models.RefundTransactionResponse
 	if err := c.httpClient.Post(ctx, c.config.TaxCloudBaseURL, path, headers, request, &response); err != nil {
-		return nil, fmt.Errorf("failed to refund order: %w", err)
+		return nil, wrapError("failed to refund order", err)
 	}
 
 	return response, nil
+}
+
+// wrapError converts internal HTTP APIError to public APIError for proper errors.As support,
+// then wraps it with a descriptive message.
+func wrapError(msg string, err error) error {
+	var internalErr *internalhttp.APIError
+	if errors.As(err, &internalErr) {
+		return fmt.Errorf("%s: %w", msg, &APIError{
+			StatusCode: internalErr.StatusCode,
+			Code:       internalErr.Code,
+			Name:       internalErr.Name,
+			Message:    internalErr.Message,
+		})
+	}
+	return fmt.Errorf("%s: %w", msg, err)
 }

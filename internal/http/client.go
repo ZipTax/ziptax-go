@@ -100,6 +100,66 @@ func (c *Client) Get(ctx context.Context, path string, queryParams map[string]st
 	return nil
 }
 
+// GetWithOptions performs a GET request with a custom base URL and headers.
+// This is used for APIs other than the default (e.g., TaxCloud).
+func (c *Client) GetWithOptions(ctx context.Context, baseURL, path string, headers map[string]string, result interface{}) error {
+	// Build URL
+	u, err := url.Parse(baseURL + path)
+	if err != nil {
+		return fmt.Errorf("failed to parse URL: %w", err)
+	}
+
+	// Create request
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set default headers
+	req.Header.Set("User-Agent", c.UserAgent)
+	req.Header.Set("Accept", "application/json")
+
+	// Set custom headers (including authentication)
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+
+	// Log request if logger is available
+	if c.Logger != nil {
+		c.Logger.Printf("Request: %s %s", req.Method, req.URL.String())
+	}
+
+	// Execute request with retry
+	resp, err := DoWithRetry(ctx, c.HTTPClient, req, c.RetryPolicy)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Log response if logger is available
+	if c.Logger != nil {
+		c.Logger.Printf("Response: %d %s", resp.StatusCode, resp.Status)
+	}
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Check status code
+	if resp.StatusCode != http.StatusOK {
+		return c.handleErrorResponse(resp.StatusCode, body)
+	}
+
+	// Parse JSON response
+	if err := json.Unmarshal(body, result); err != nil {
+		return fmt.Errorf("failed to parse JSON response: %w", err)
+	}
+
+	return nil
+}
+
 // Post performs a POST request with JSON body.
 func (c *Client) Post(ctx context.Context, baseURL, path string, headers map[string]string, body, result interface{}) error {
 	// Marshal request body to JSON
@@ -256,7 +316,7 @@ func (c *Client) Patch(ctx context.Context, baseURL, path string, headers map[st
 
 // handleErrorResponse parses and returns an error from an API error response.
 func (c *Client) handleErrorResponse(statusCode int, body []byte) error {
-	// Try to parse as a structured error response
+	// Try to parse as a ZipTax structured error response
 	var errResp struct {
 		Metadata struct {
 			Response struct {
@@ -274,6 +334,23 @@ func (c *Client) handleErrorResponse(statusCode int, body []byte) error {
 			Code:       errResp.Metadata.Response.Code,
 			Name:       errResp.Metadata.Response.Name,
 			Message:    errResp.Metadata.Response.Message,
+		}
+	}
+
+	// Try to parse as a TaxCloud structured error response
+	var tcErrResp struct {
+		Title  string `json:"title"`
+		Status int    `json:"status"`
+		Detail string `json:"detail"`
+	}
+
+	if err := json.Unmarshal(body, &tcErrResp); err == nil &&
+		tcErrResp.Status != 0 {
+		return &APIError{
+			StatusCode: statusCode,
+			Code:       tcErrResp.Status,
+			Name:       tcErrResp.Title,
+			Message:    tcErrResp.Detail,
 		}
 	}
 

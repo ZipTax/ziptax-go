@@ -3,6 +3,7 @@ package validation
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -43,6 +44,7 @@ func ValidateCoordinates(lat, lng string) error {
 }
 
 // ValidateHistoricalDate validates a historical date in YYYY-MM format.
+// Month must be between 01 and 12. Year must be a positive number.
 func ValidateHistoricalDate(date string) error {
 	if date == "" {
 		return nil // Optional parameter
@@ -50,6 +52,14 @@ func ValidateHistoricalDate(date string) error {
 	if !historicalDatePattern.MatchString(date) {
 		return fmt.Errorf("historical date must be in YYYY-MM format")
 	}
+
+	// Validate month range (01-12)
+	parts := strings.SplitN(date, "-", 2)
+	month, _ := strconv.Atoi(parts[1])
+	if month < 1 || month > 12 {
+		return fmt.Errorf("historical date month must be between 01 and 12")
+	}
+
 	return nil
 }
 
@@ -93,4 +103,14 @@ func ValidatePostalCode(postalCode string) error {
 		return fmt.Errorf("postal code must be in 5-digit (e.g., 92694) or 9-digit (e.g., 92694-1234) format")
 	}
 	return nil
+}
+
+// NormalizePostalCode trims whitespace and strips the 9-digit suffix from a postal code,
+// returning only the 5-digit base. The API only supports 5-digit postal codes.
+func NormalizePostalCode(postalCode string) string {
+	postalCode = strings.TrimSpace(postalCode)
+	if idx := strings.Index(postalCode, "-"); idx != -1 {
+		return postalCode[:idx]
+	}
+	return postalCode
 }

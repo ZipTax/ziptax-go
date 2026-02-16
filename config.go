@@ -123,7 +123,7 @@ func (c *Config) applyDefaults() {
 	}
 
 	if c.UserAgent == "" {
-		c.UserAgent = "ziptax-go/1.0.0"
+		c.UserAgent = "ziptax-go/" + Version
 	}
 
 	// Apply TaxCloud defaults if TaxCloud credentials are provided
