@@ -63,14 +63,24 @@ jobs:
           echo "PR Version: $PR_VERSION"
           echo "Base Version: $BASE_VERSION"
 
-          # Function to compare semantic versions
+          # Function to strip pre-release suffix and return core X.Y.Z
+          strip_prerelease() {
+              echo "${1%%-*}"
+          }
+
+          # Function to compare semantic versions (ignores pre-release suffixes)
           compare_versions() {
               if [ "$1" = "$2" ]; then
-                  return 1  # Equal
+                  return 1  # Equal (including pre-release)
               fi
 
-              IFS='.' read -ra V1 <<< "$1"
-              IFS='.' read -ra V2 <<< "$2"
+              local CORE1
+              local CORE2
+              CORE1=$(strip_prerelease "$1")
+              CORE2=$(strip_prerelease "$2")
+
+              IFS='.' read -ra V1 <<< "$CORE1"
+              IFS='.' read -ra V2 <<< "$CORE2"
 
               # Compare major
               if [ "${V1[0]}" -gt "${V2[0]}" ]; then
@@ -93,7 +103,8 @@ jobs:
                   return 2
               fi
 
-              return 1  # Equal
+              # Core versions equal but full strings differ (pre-release change)
+              return 0
           }
 
           if compare_versions "$PR_VERSION" "$BASE_VERSION"; then
@@ -140,8 +151,12 @@ jobs:
           PR_VERSION="${{ steps.pr_version.outputs.version }}"
           BASE_VERSION="${{ steps.base_version.outputs.version }}"
 
-          IFS='.' read -ra PR_V <<< "$PR_VERSION"
-          IFS='.' read -ra BASE_V <<< "$BASE_VERSION"
+          # Strip pre-release suffixes to get core X.Y.Z for numeric comparison
+          PR_CORE="${PR_VERSION%%-*}"
+          BASE_CORE="${BASE_VERSION%%-*}"
+
+          IFS='.' read -ra PR_V <<< "$PR_CORE"
+          IFS='.' read -ra BASE_V <<< "$BASE_CORE"
 
           if [ "${PR_V[0]}" -gt "${BASE_V[0]}" ]; then
             echo "type=major" >> $GITHUB_OUTPUT
@@ -152,6 +167,10 @@ jobs:
           elif [ "${PR_V[2]}" -gt "${BASE_V[2]}" ]; then
             echo "type=patch" >> $GITHUB_OUTPUT
             echo "🐛 PATCH version bump detected (bug fixes)"
+          else
+            # Core versions are equal; only pre-release identifier changed
+            echo "type=prerelease" >> $GITHUB_OUTPUT
+            echo "🏷️ PRE-RELEASE version change detected"
           fi
 
       - name: Fail if version not bumped
@@ -182,13 +201,15 @@ jobs:
             const bumpEmoji = {
               'major': '🚀',
               'minor': '✨',
-              'patch': '🐛'
+              'patch': '🐛',
+              'prerelease': '🏷️'
             };
 
             const bumpDescription = {
               'major': 'Breaking Changes',
               'minor': 'New Features',
-              'patch': 'Bug Fixes'
+              'patch': 'Bug Fixes',
+              'prerelease': 'Pre-release Update'
             };
 
             const body = `## ${bumpEmoji[bumpType]} Version Bump Detected

@@ -52,7 +52,7 @@ Semantic Versioning Guidelines:
 - ✅ Runs all tests
 - ✅ Builds the project
 - ✅ Generates release notes from commits
-- ✅ Creates GitHub release (draft for pre-releases)
+- ✅ Creates GitHub release (marked as pre-release for versions containing `-`)
 - ✅ Links to full changelog
 
 **Tag Format:**
@@ -166,7 +166,7 @@ git push origin v1.1.0
 git tag v2.0.0-beta.1
 git push origin v2.0.0-beta.1
 
-# 4. GitHub Action creates draft release
+# 4. GitHub Action creates pre-release
 ```
 
 ## Skipping Version Check
