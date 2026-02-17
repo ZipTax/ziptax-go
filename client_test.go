@@ -2,12 +2,14 @@ package ziptax
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/ziptax/ziptax-go/models"
 )
 
 func TestNewClient(t *testing.T) {
@@ -41,7 +43,7 @@ func TestClient_GetSalesTaxByAddress(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "/request/v60", r.URL.Path)
 			assert.Equal(t, "200 Spectrum Center Dr", r.URL.Query().Get("address"))
-			assert.Equal(t, "2024-01", r.URL.Query().Get("historical"))
+			assert.Equal(t, "202401", r.URL.Query().Get("historical"))
 			assert.Equal(t, "USA", r.URL.Query().Get("countryCode"))
 			assert.Equal(t, "json", r.URL.Query().Get("format"))
 
@@ -84,7 +86,7 @@ func TestClient_GetSalesTaxByAddress(t *testing.T) {
 		response, err := client.GetSalesTaxByAddress(
 			context.Background(),
 			"200 Spectrum Center Dr",
-			WithHistorical("2024-01"),
+			WithHistorical("202401"),
 			WithCountryCode("USA"),
 			WithFormat("json"),
 		)
@@ -393,10 +395,11 @@ func TestClient_GetRatesByPostalCode(t *testing.T) {
 		assert.Equal(t, "D", response.Results[0].OriginDestination)
 	})
 
-	t.Run("successful request with 9-digit postal code", func(t *testing.T) {
+	t.Run("successful request with 9-digit postal code (stripped to 5-digit)", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "/request/v60", r.URL.Path)
-			assert.Equal(t, "92694-1234", r.URL.Query().Get("postalcode"))
+			// 9-digit postal codes are normalized to 5-digit before sending to the API
+			assert.Equal(t, "92694", r.URL.Query().Get("postalcode"))
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
@@ -527,4 +530,597 @@ func TestClient_GetRatesByPostalCode(t *testing.T) {
 		require.ErrorAs(t, err, &validationErr)
 		assert.Equal(t, "postalcode", validationErr.Field)
 	})
+}
+
+func TestCreateOrder_NoTaxCloudCredentials(t *testing.T) {
+	// Create client without TaxCloud credentials
+	client, err := NewClient("test-api-key")
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	// Try to create an order
+	ctx := context.Background()
+	orderReq := &models.CreateOrderRequest{
+		OrderID:         "test-order-123",
+		CustomerID:      "customer-456",
+		TransactionDate: "2024-01-15T09:30:00Z",
+		CompletedDate:   "2024-01-15T09:30:00Z",
+		Origin: models.TaxCloudAddress{
+			Line1: "323 Washington Ave N",
+			City:  "Minneapolis",
+			State: "MN",
+			Zip:   "55401-2427",
+		},
+		Destination: models.TaxCloudAddress{
+			Line1: "323 Washington Ave N",
+			City:  "Minneapolis",
+			State: "MN",
+			Zip:   "55401-2427",
+		},
+		LineItems: []models.CartItemWithTax{
+			{
+				Index:    0,
+				ItemID:   "item-1",
+				Price:    10.8,
+				Quantity: 1.5,
+				Tax: models.Tax{
+					Amount: 1.31,
+					Rate:   0.0813,
+				},
+			},
+		},
+		Currency: &models.Currency{},
+	}
+
+	_, err = client.CreateOrder(ctx, orderReq)
+
+	// Should return ErrTaxCloudNotConfigured
+	if err == nil {
+		t.Fatal("Expected error when TaxCloud credentials not configured, got nil")
+	}
+
+	if !errors.Is(err, ErrTaxCloudNotConfigured) {
+		t.Errorf("Expected ErrTaxCloudNotConfigured, got: %v", err)
+	}
+}
+
+func TestCreateOrder_WithCredentials(t *testing.T) {
+	// Create client with TaxCloud credentials
+	client, err := NewClient(
+		"test-api-key",
+		WithTaxCloudConnectionID("test-connection-id"),
+		WithTaxCloudAPIKey("test-taxcloud-key"),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	// Verify credentials are configured
+	if !client.config.HasTaxCloudCredentials() {
+		t.Fatal("TaxCloud credentials should be configured")
+	}
+
+	// Verify the config values are set correctly
+	if client.config.TaxCloudConnectionID != "test-connection-id" {
+		t.Errorf("Expected connection ID 'test-connection-id', got '%s'", client.config.TaxCloudConnectionID)
+	}
+
+	if client.config.TaxCloudAPIKey != "test-taxcloud-key" {
+		t.Errorf("Expected API key 'test-taxcloud-key', got '%s'", client.config.TaxCloudAPIKey)
+	}
+
+	if client.config.TaxCloudBaseURL != DefaultTaxCloudBaseURL {
+		t.Errorf("Expected base URL '%s', got '%s'", DefaultTaxCloudBaseURL, client.config.TaxCloudBaseURL)
+	}
+}
+
+func TestCreateOrder_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/tax/connections/conn-123/orders", r.URL.Path)
+		assert.Equal(t, "tc-api-key", r.Header.Get("X-API-Key"))
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{
+			"orderId": "order-123",
+			"customerId": "customer-456",
+			"connectionId": "conn-123",
+			"transactionDate": "2024-01-15T09:30:00Z",
+			"completedDate": "2024-01-15T09:30:00Z",
+			"origin": {
+				"line1": "200 Spectrum Center Drive",
+				"city": "Irvine",
+				"state": "CA",
+				"zip": "92618",
+				"countryCode": "US"
+			},
+			"destination": {
+				"line1": "323 Washington Ave N",
+				"city": "Minneapolis",
+				"state": "MN",
+				"zip": "55401-2427",
+				"countryCode": "US"
+			},
+			"lineItems": [
+				{
+					"index": 0,
+					"itemId": "item-1",
+					"price": 10.8,
+					"quantity": 1.5,
+					"tax": {"amount": 1.31, "rate": 0.0813},
+					"tic": 0
+				}
+			],
+			"currency": {"currencyCode": "USD"},
+			"deliveredBySeller": false,
+			"excludeFromFiling": false
+		}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(
+		"test-api-key",
+		WithTaxCloudConnectionID("conn-123"),
+		WithTaxCloudAPIKey("tc-api-key"),
+		WithTaxCloudBaseURL(server.URL),
+	)
+	require.NoError(t, err)
+
+	orderReq := &models.CreateOrderRequest{
+		OrderID:         "order-123",
+		CustomerID:      "customer-456",
+		TransactionDate: "2024-01-15T09:30:00Z",
+		CompletedDate:   "2024-01-15T09:30:00Z",
+		Origin: models.TaxCloudAddress{
+			Line1: "200 Spectrum Center Drive",
+			City:  "Irvine",
+			State: "CA",
+			Zip:   "92618",
+		},
+		Destination: models.TaxCloudAddress{
+			Line1: "323 Washington Ave N",
+			City:  "Minneapolis",
+			State: "MN",
+			Zip:   "55401-2427",
+		},
+		LineItems: []models.CartItemWithTax{
+			{
+				Index:    0,
+				ItemID:   "item-1",
+				Price:    10.8,
+				Quantity: 1.5,
+				Tax:      models.Tax{Amount: 1.31, Rate: 0.0813},
+			},
+		},
+		Currency: &models.Currency{},
+	}
+
+	response, err := client.CreateOrder(context.Background(), orderReq)
+	require.NoError(t, err)
+	assert.Equal(t, "order-123", response.OrderID)
+	assert.Equal(t, "customer-456", response.CustomerID)
+	assert.Equal(t, "conn-123", response.ConnectionID)
+	assert.Len(t, response.LineItems, 1)
+	assert.Equal(t, 1.31, response.LineItems[0].Tax.Amount)
+}
+
+func TestCreateOrder_APIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{
+			"$schema": "https://api.v3.taxcloud.com/schemas/error",
+			"title": "Bad Request",
+			"status": 400,
+			"detail": "order is already completed"
+		}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(
+		"test-api-key",
+		WithTaxCloudConnectionID("conn-123"),
+		WithTaxCloudAPIKey("tc-api-key"),
+		WithTaxCloudBaseURL(server.URL),
+	)
+	require.NoError(t, err)
+
+	orderReq := &models.CreateOrderRequest{
+		OrderID:    "order-123",
+		CustomerID: "customer-456",
+	}
+
+	_, err = client.CreateOrder(context.Background(), orderReq)
+	require.Error(t, err)
+
+	// Verify the error can be extracted as a public APIError
+	var apiErr *APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, 400, apiErr.StatusCode)
+	assert.Equal(t, "Bad Request", apiErr.Name)
+	assert.Equal(t, "order is already completed", apiErr.Message)
+}
+
+func TestGetOrder_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/tax/connections/conn-123/orders/order-456", r.URL.Path)
+		assert.Equal(t, "tc-api-key", r.Header.Get("X-API-Key"))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"orderId": "order-456",
+			"customerId": "customer-789",
+			"connectionId": "conn-123",
+			"transactionDate": "2024-01-15T09:30:00Z",
+			"completedDate": "2024-01-15T09:30:00Z",
+			"origin": {
+				"line1": "200 Spectrum Center Drive",
+				"city": "Irvine",
+				"state": "CA",
+				"zip": "92618",
+				"countryCode": "US"
+			},
+			"destination": {
+				"line1": "323 Washington Ave N",
+				"city": "Minneapolis",
+				"state": "MN",
+				"zip": "55401-2427",
+				"countryCode": "US"
+			},
+			"lineItems": [
+				{
+					"index": 0,
+					"itemId": "item-1",
+					"price": 10.8,
+					"quantity": 1.5,
+					"tax": {"amount": 1.31, "rate": 0.0813},
+					"tic": 0
+				}
+			],
+			"currency": {"currencyCode": "USD"},
+			"deliveredBySeller": false,
+			"excludeFromFiling": false
+		}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(
+		"test-api-key",
+		WithTaxCloudConnectionID("conn-123"),
+		WithTaxCloudAPIKey("tc-api-key"),
+		WithTaxCloudBaseURL(server.URL),
+	)
+	require.NoError(t, err)
+
+	response, err := client.GetOrder(context.Background(), "order-456")
+	require.NoError(t, err)
+	assert.Equal(t, "order-456", response.OrderID)
+	assert.Equal(t, "customer-789", response.CustomerID)
+	assert.Len(t, response.LineItems, 1)
+}
+
+func TestGetOrder_NoCredentials(t *testing.T) {
+	client, err := NewClient("test-api-key")
+	require.NoError(t, err)
+
+	_, err = client.GetOrder(context.Background(), "order-123")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrTaxCloudNotConfigured)
+}
+
+func TestGetOrder_APIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{
+			"title": "Not Found",
+			"status": 404,
+			"detail": "order not found"
+		}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(
+		"test-api-key",
+		WithTaxCloudConnectionID("conn-123"),
+		WithTaxCloudAPIKey("tc-api-key"),
+		WithTaxCloudBaseURL(server.URL),
+	)
+	require.NoError(t, err)
+
+	_, err = client.GetOrder(context.Background(), "nonexistent-order")
+	require.Error(t, err)
+
+	var apiErr *APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, 404, apiErr.StatusCode)
+}
+
+func TestUpdateOrder_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPatch, r.Method)
+		assert.Equal(t, "/tax/connections/conn-123/orders/order-456", r.URL.Path)
+		assert.Equal(t, "tc-api-key", r.Header.Get("X-API-Key"))
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"orderId": "order-456",
+			"customerId": "customer-789",
+			"connectionId": "conn-123",
+			"transactionDate": "2024-01-15T09:30:00Z",
+			"completedDate": "2024-01-16T10:00:00Z",
+			"origin": {
+				"line1": "200 Spectrum Center Drive",
+				"city": "Irvine",
+				"state": "CA",
+				"zip": "92618",
+				"countryCode": "US"
+			},
+			"destination": {
+				"line1": "323 Washington Ave N",
+				"city": "Minneapolis",
+				"state": "MN",
+				"zip": "55401-2427",
+				"countryCode": "US"
+			},
+			"lineItems": [],
+			"currency": {"currencyCode": "USD"},
+			"deliveredBySeller": false,
+			"excludeFromFiling": false
+		}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(
+		"test-api-key",
+		WithTaxCloudConnectionID("conn-123"),
+		WithTaxCloudAPIKey("tc-api-key"),
+		WithTaxCloudBaseURL(server.URL),
+	)
+	require.NoError(t, err)
+
+	updateReq := &models.UpdateOrderRequest{
+		CompletedDate: "2024-01-16T10:00:00Z",
+	}
+
+	response, err := client.UpdateOrder(context.Background(), "order-456", updateReq)
+	require.NoError(t, err)
+	assert.Equal(t, "order-456", response.OrderID)
+	assert.Equal(t, "2024-01-16T10:00:00Z", response.CompletedDate)
+}
+
+func TestUpdateOrder_NoCredentials(t *testing.T) {
+	client, err := NewClient("test-api-key")
+	require.NoError(t, err)
+
+	updateReq := &models.UpdateOrderRequest{CompletedDate: "2024-01-16T10:00:00Z"}
+	_, err = client.UpdateOrder(context.Background(), "order-123", updateReq)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrTaxCloudNotConfigured)
+}
+
+func TestUpdateOrder_APIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{
+			"title": "Bad Request",
+			"status": 400,
+			"detail": "order is already completed and cannot be updated"
+		}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(
+		"test-api-key",
+		WithTaxCloudConnectionID("conn-123"),
+		WithTaxCloudAPIKey("tc-api-key"),
+		WithTaxCloudBaseURL(server.URL),
+	)
+	require.NoError(t, err)
+
+	updateReq := &models.UpdateOrderRequest{CompletedDate: "2024-01-16T10:00:00Z"}
+	_, err = client.UpdateOrder(context.Background(), "order-456", updateReq)
+	require.Error(t, err)
+
+	var apiErr *APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, 400, apiErr.StatusCode)
+	assert.Equal(t, "order is already completed and cannot be updated", apiErr.Message)
+}
+
+func TestRefundOrder_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/tax/connections/conn-123/orders/refunds/order-456", r.URL.Path)
+		assert.Equal(t, "tc-api-key", r.Header.Get("X-API-Key"))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`[
+			{
+				"connectionId": "conn-123",
+				"createdDate": "2024-01-17T12:00:00Z",
+				"items": [
+					{
+						"index": 0,
+						"itemId": "item-1",
+						"price": 10.8,
+						"quantity": 1.0,
+						"tax": {"amount": 0.87}
+					}
+				]
+			}
+		]`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(
+		"test-api-key",
+		WithTaxCloudConnectionID("conn-123"),
+		WithTaxCloudAPIKey("tc-api-key"),
+		WithTaxCloudBaseURL(server.URL),
+	)
+	require.NoError(t, err)
+
+	refundReq := &models.RefundTransactionRequest{
+		Items: []models.CartItemRefundWithTaxRequest{
+			{
+				ItemID:   "item-1",
+				Quantity: 1.0,
+			},
+		},
+	}
+
+	refunds, err := client.RefundOrder(context.Background(), "order-456", refundReq)
+	require.NoError(t, err)
+	require.Len(t, refunds, 1)
+	assert.Equal(t, "conn-123", refunds[0].ConnectionID)
+	require.Len(t, refunds[0].Items, 1)
+	assert.Equal(t, "item-1", refunds[0].Items[0].ItemID)
+	assert.Equal(t, 0.87, refunds[0].Items[0].Tax.Amount)
+}
+
+func TestRefundOrder_FullRefund(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`[
+			{
+				"connectionId": "conn-123",
+				"createdDate": "2024-01-17T12:00:00Z",
+				"items": [
+					{
+						"index": 0,
+						"itemId": "item-1",
+						"price": 10.8,
+						"quantity": 1.5,
+						"tax": {"amount": 1.31}
+					}
+				]
+			}
+		]`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(
+		"test-api-key",
+		WithTaxCloudConnectionID("conn-123"),
+		WithTaxCloudAPIKey("tc-api-key"),
+		WithTaxCloudBaseURL(server.URL),
+	)
+	require.NoError(t, err)
+
+	// Empty request for full refund
+	refundReq := &models.RefundTransactionRequest{}
+
+	refunds, err := client.RefundOrder(context.Background(), "order-456", refundReq)
+	require.NoError(t, err)
+	require.Len(t, refunds, 1)
+}
+
+func TestRefundOrder_NoCredentials(t *testing.T) {
+	client, err := NewClient("test-api-key")
+	require.NoError(t, err)
+
+	refundReq := &models.RefundTransactionRequest{}
+	_, err = client.RefundOrder(context.Background(), "order-123", refundReq)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrTaxCloudNotConfigured)
+}
+
+func TestRefundOrder_APIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{
+			"title": "Bad Request",
+			"status": 400,
+			"detail": "order has already been refunded"
+		}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(
+		"test-api-key",
+		WithTaxCloudConnectionID("conn-123"),
+		WithTaxCloudAPIKey("tc-api-key"),
+		WithTaxCloudBaseURL(server.URL),
+	)
+	require.NoError(t, err)
+
+	refundReq := &models.RefundTransactionRequest{}
+	_, err = client.RefundOrder(context.Background(), "order-456", refundReq)
+	require.Error(t, err)
+
+	var apiErr *APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, 400, apiErr.StatusCode)
+}
+
+func TestWrapError_WithAPIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{
+			"metadata": {
+				"response": {
+					"code": 401,
+					"name": "UNAUTHORIZED",
+					"message": "Invalid API key"
+				}
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient("bad-key", WithBaseURL(server.URL))
+	require.NoError(t, err)
+
+	_, err = client.GetSalesTaxByAddress(context.Background(), "200 Spectrum Center Dr")
+	require.Error(t, err)
+
+	// Verify the public APIError can be extracted through the wrap
+	var apiErr *APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, 401, apiErr.StatusCode)
+	assert.Equal(t, 401, apiErr.Code)
+	assert.Equal(t, "UNAUTHORIZED", apiErr.Name)
+	assert.Equal(t, "Invalid API key", apiErr.Message)
+}
+
+func TestWrapError_WithNonAPIError(t *testing.T) {
+	// Test wrapError with a non-API error (e.g., context canceled)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	client, err := NewClient("test-api-key")
+	require.NoError(t, err)
+
+	_, err = client.GetSalesTaxByAddress(ctx, "200 Spectrum Center Dr")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to get sales tax by address")
+	assert.Contains(t, err.Error(), "context canceled")
+
+	// Should NOT be extractable as an APIError
+	var apiErr *APIError
+	assert.False(t, errors.As(err, &apiErr))
+}
+
+func TestWithTaxCloudBaseURL(t *testing.T) {
+	client, err := NewClient(
+		"test-api-key",
+		WithTaxCloudConnectionID("conn-123"),
+		WithTaxCloudAPIKey("tc-api-key"),
+		WithTaxCloudBaseURL("https://custom-taxcloud.example.com"),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "https://custom-taxcloud.example.com", client.config.TaxCloudBaseURL)
 }

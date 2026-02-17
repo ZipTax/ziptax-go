@@ -41,7 +41,7 @@ func TestConfig_applyDefaults(t *testing.T) {
 		assert.Equal(t, DefaultRetryWaitMin, config.RetryWaitMin)
 		assert.Equal(t, DefaultRetryWaitMax, config.RetryWaitMax)
 		assert.NotNil(t, config.HTTPClient)
-		assert.Equal(t, "ziptax-go/1.0.0", config.UserAgent)
+		assert.Equal(t, "ziptax-go/"+Version, config.UserAgent)
 	})
 
 	t.Run("zero max retries remains zero", func(t *testing.T) {

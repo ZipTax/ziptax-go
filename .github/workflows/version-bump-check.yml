@@ -1,0 +1,232 @@
+name: Version Bump Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    branches:
+      - main
+
+jobs:
+  check-version-bump:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Fetch base branch
+        run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Get current version from PR
+        id: pr_version
+        run: |
+          # Extract version from version.go or tag
+          if [ -f "version.go" ]; then
+            VERSION=$(grep -oP 'Version\s*=\s*"\K[^"]+' version.go || echo "0.0.0")
+          else
+            # Get latest git tag
+            VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+            VERSION=${VERSION#v}  # Remove 'v' prefix if present
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "PR Version: $VERSION"
+
+      - name: Get base branch version
+        id: base_version
+        run: |
+          git checkout origin/${{ github.event.pull_request.base.ref }}
+          if [ -f "version.go" ]; then
+            VERSION=$(grep -oP 'Version\s*=\s*"\K[^"]+' version.go || echo "0.0.0")
+          else
+            # Get latest git tag from base branch
+            VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+            VERSION=${VERSION#v}  # Remove 'v' prefix if present
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Base Version: $VERSION"
+
+      - name: Check if version was bumped
+        id: version_check
+        run: |
+          PR_VERSION="${{ steps.pr_version.outputs.version }}"
+          BASE_VERSION="${{ steps.base_version.outputs.version }}"
+
+          echo "PR Version: $PR_VERSION"
+          echo "Base Version: $BASE_VERSION"
+
+          # Function to strip pre-release suffix and return core X.Y.Z
+          strip_prerelease() {
+              echo "${1%%-*}"
+          }
+
+          # Function to compare semantic versions (ignores pre-release suffixes)
+          compare_versions() {
+              if [ "$1" = "$2" ]; then
+                  return 1  # Equal (including pre-release)
+              fi
+
+              local CORE1
+              local CORE2
+              CORE1=$(strip_prerelease "$1")
+              CORE2=$(strip_prerelease "$2")
+
+              IFS='.' read -ra V1 <<< "$CORE1"
+              IFS='.' read -ra V2 <<< "$CORE2"
+
+              # Compare major
+              if [ "${V1[0]}" -gt "${V2[0]}" ]; then
+                  return 0  # V1 > V2
+              elif [ "${V1[0]}" -lt "${V2[0]}" ]; then
+                  return 2  # V1 < V2
+              fi
+
+              # Compare minor
+              if [ "${V1[1]}" -gt "${V2[1]}" ]; then
+                  return 0
+              elif [ "${V1[1]}" -lt "${V2[1]}" ]; then
+                  return 2
+              fi
+
+              # Compare patch
+              if [ "${V1[2]}" -gt "${V2[2]}" ]; then
+                  return 0
+              elif [ "${V1[2]}" -lt "${V2[2]}" ]; then
+                  return 2
+              fi
+
+              # Core versions equal but full strings differ (pre-release change)
+              return 0
+          }
+
+          if compare_versions "$PR_VERSION" "$BASE_VERSION"; then
+              echo "✅ Version was bumped from $BASE_VERSION to $PR_VERSION"
+              echo "bumped=true" >> $GITHUB_OUTPUT
+              echo "change_type=bumped" >> $GITHUB_OUTPUT
+          elif compare_versions "$BASE_VERSION" "$PR_VERSION"; then
+              echo "❌ Version was decreased from $BASE_VERSION to $PR_VERSION"
+              echo "bumped=false" >> $GITHUB_OUTPUT
+              echo "change_type=decreased" >> $GITHUB_OUTPUT
+              exit 1
+          else
+              echo "⚠️ Version was not changed (still $BASE_VERSION)"
+              echo "bumped=false" >> $GITHUB_OUTPUT
+              echo "change_type=unchanged" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check for skip label
+        id: check_skip
+        run: |
+          LABELS='${{ toJSON(github.event.pull_request.labels.*.name) }}'
+          if echo "$LABELS" | grep -q "skip-version-check"; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "⏭️ Skipping version check due to 'skip-version-check' label"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Validate semantic version format
+        if: steps.version_check.outputs.bumped == 'true'
+        run: |
+          VERSION="${{ steps.pr_version.outputs.version }}"
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.+-]+)?$'; then
+            echo "❌ Invalid semantic version format: $VERSION"
+            echo "Expected format: MAJOR.MINOR.PATCH (e.g., 1.2.3 or 1.2.3-beta.1)"
+            exit 1
+          fi
+          echo "✅ Version format is valid"
+
+      - name: Determine version bump type
+        if: steps.version_check.outputs.bumped == 'true'
+        id: bump_type
+        run: |
+          PR_VERSION="${{ steps.pr_version.outputs.version }}"
+          BASE_VERSION="${{ steps.base_version.outputs.version }}"
+
+          # Strip pre-release suffixes to get core X.Y.Z for numeric comparison
+          PR_CORE="${PR_VERSION%%-*}"
+          BASE_CORE="${BASE_VERSION%%-*}"
+
+          IFS='.' read -ra PR_V <<< "$PR_CORE"
+          IFS='.' read -ra BASE_V <<< "$BASE_CORE"
+
+          if [ "${PR_V[0]}" -gt "${BASE_V[0]}" ]; then
+            echo "type=major" >> $GITHUB_OUTPUT
+            echo "🚀 MAJOR version bump detected (breaking changes)"
+          elif [ "${PR_V[1]}" -gt "${BASE_V[1]}" ]; then
+            echo "type=minor" >> $GITHUB_OUTPUT
+            echo "✨ MINOR version bump detected (new features)"
+          elif [ "${PR_V[2]}" -gt "${BASE_V[2]}" ]; then
+            echo "type=patch" >> $GITHUB_OUTPUT
+            echo "🐛 PATCH version bump detected (bug fixes)"
+          else
+            # Core versions are equal; only pre-release identifier changed
+            echo "type=prerelease" >> $GITHUB_OUTPUT
+            echo "🏷️ PRE-RELEASE version change detected"
+          fi
+
+      - name: Fail if version not bumped
+        if: steps.version_check.outputs.bumped != 'true' && steps.check_skip.outputs.skip != 'true'
+        run: |
+          echo "❌ Version must be bumped for this PR!"
+          echo ""
+          echo "Current version: ${{ steps.base_version.outputs.version }}"
+          echo "PR version: ${{ steps.pr_version.outputs.version }}"
+          echo ""
+          echo "Semantic Versioning Guidelines:"
+          echo "  • MAJOR (X.0.0): Breaking changes"
+          echo "  • MINOR (0.X.0): New features (backward compatible)"
+          echo "  • PATCH (0.0.X): Bug fixes (backward compatible)"
+          echo ""
+          echo "To skip this check, add the 'skip-version-check' label to the PR."
+          exit 1
+
+      - name: Post comment on PR
+        if: steps.version_check.outputs.bumped == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prVersion = '${{ steps.pr_version.outputs.version }}';
+            const baseVersion = '${{ steps.base_version.outputs.version }}';
+            const bumpType = '${{ steps.bump_type.outputs.type }}';
+
+            const bumpEmoji = {
+              'major': '🚀',
+              'minor': '✨',
+              'patch': '🐛',
+              'prerelease': '🏷️'
+            };
+
+            const bumpDescription = {
+              'major': 'Breaking Changes',
+              'minor': 'New Features',
+              'patch': 'Bug Fixes',
+              'prerelease': 'Pre-release Update'
+            };
+
+            const body = `## ${bumpEmoji[bumpType]} Version Bump Detected
+
+            **Type:** ${bumpType.toUpperCase()} (${bumpDescription[bumpType]})
+            **From:** \`${baseVersion}\` → **To:** \`${prVersion}\`
+
+            ✅ Semantic version has been properly bumped.
+
+            ### Semantic Versioning
+            - **MAJOR** (X.0.0): Breaking changes
+            - **MINOR** (0.X.0): New features (backward compatible)
+            - **PATCH** (0.0.X): Bug fixes (backward compatible)`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });

@@ -2,16 +2,17 @@ package ziptax
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
-	"github.com/ziptax/ziptax-go/internal/http"
+	internalhttp "github.com/ziptax/ziptax-go/internal/http"
 	"github.com/ziptax/ziptax-go/internal/validation"
 	"github.com/ziptax/ziptax-go/models"
 )
 
 // Client is the main ZipTax API client.
 type Client struct {
-	httpClient *http.Client
+	httpClient *internalhttp.Client
 	config     *Config
 }
 
@@ -47,14 +48,14 @@ func NewClient(apiKey string, opts ...Option) (*Client, error) {
 	}
 
 	// Create retry policy
-	retryPolicy := http.DefaultRetryPolicy(
+	retryPolicy := internalhttp.DefaultRetryPolicy(
 		config.MaxRetries,
 		config.RetryWaitMin,
 		config.RetryWaitMax,
 	)
 
 	// Create HTTP client wrapper
-	httpClient := http.NewClient(
+	httpClient := internalhttp.NewClient(
 		config.HTTPClient,
 		config.BaseURL,
 		config.APIKey,
@@ -135,7 +136,7 @@ func (c *Client) GetSalesTaxByAddress(ctx context.Context, address string, opts 
 	// Make request
 	var response models.V60Response
 	if err := c.httpClient.Get(ctx, "/request/v60", queryParams, &response); err != nil {
-		return nil, fmt.Errorf("failed to get sales tax by address: %w", err)
+		return nil, wrapError("failed to get sales tax by address", err)
 	}
 
 	return &response, nil
@@ -208,7 +209,7 @@ func (c *Client) GetSalesTaxByGeoLocation(ctx context.Context, lat, lng string, 
 	// Make request
 	var response models.V60Response
 	if err := c.httpClient.Get(ctx, "/request/v60", queryParams, &response); err != nil {
-		return nil, fmt.Errorf("failed to get sales tax by geolocation: %w", err)
+		return nil, wrapError("failed to get sales tax by geolocation", err)
 	}
 
 	return &response, nil
@@ -227,7 +228,7 @@ func (c *Client) GetSalesTaxByGeoLocation(ctx context.Context, lat, lng string, 
 func (c *Client) GetAccountMetrics(ctx context.Context) (*models.V60AccountMetrics, error) {
 	var metrics models.V60AccountMetrics
 	if err := c.httpClient.Get(ctx, "/account/v60/metrics", nil, &metrics); err != nil {
-		return nil, fmt.Errorf("failed to get account metrics: %w", err)
+		return nil, wrapError("failed to get account metrics", err)
 	}
 
 	return &metrics, nil
@@ -256,6 +257,9 @@ func (c *Client) GetRatesByPostalCode(ctx context.Context, postalCode string, op
 		}
 	}
 
+	// Strip 9-digit suffix if present (API only supports 5-digit postal codes)
+	postalCode = validation.NormalizePostalCode(postalCode)
+
 	// Build request options
 	reqOpts := &RequestOptions{}
 	for _, opt := range opts {
@@ -282,7 +286,7 @@ func (c *Client) GetRatesByPostalCode(ctx context.Context, postalCode string, op
 	// Make request
 	var response models.V60PostalCodeResponse
 	if err := c.httpClient.Get(ctx, "/request/v60", queryParams, &response); err != nil {
-		return nil, fmt.Errorf("failed to get rates by postal code: %w", err)
+		return nil, wrapError("failed to get rates by postal code", err)
 	}
 
 	return &response, nil
@@ -290,7 +294,7 @@ func (c *Client) GetRatesByPostalCode(ctx context.Context, postalCode string, op
 
 // RequestOptions holds optional parameters for API requests.
 type RequestOptions struct {
-	Historical  string // Historical date for rates (YYYY-MM format)
+	Historical  string // Historical date for rates (YYYYMM format, e.g., "202401")
 	CountryCode string // Country code (USA or CAN)
 	Format      string // Response format (json or xml)
 }
@@ -298,7 +302,7 @@ type RequestOptions struct {
 // RequestOption is a functional option for API requests.
 type RequestOption func(*RequestOptions)
 
-// WithHistorical sets the historical date for tax rates (YYYY-MM format).
+// WithHistorical sets the historical date for tax rates (YYYYMM format, e.g., "202401").
 func WithHistorical(date string) RequestOption {
 	return func(o *RequestOptions) {
 		o.Historical = date
@@ -317,4 +321,205 @@ func WithFormat(format string) RequestOption {
 	return func(o *RequestOptions) {
 		o.Format = format
 	}
+}
+
+// CreateOrder creates an order in TaxCloud for order management and tax filing.
+// This function requires TaxCloud credentials to be configured during client initialization.
+//
+// Example:
+//
+//	ctx := context.Background()
+//	orderReq := &models.CreateOrderRequest{
+//		OrderID:         "order-123",
+//		CustomerID:      "customer-456",
+//		TransactionDate: "2024-01-15T09:30:00Z",
+//		CompletedDate:   "2024-01-15T09:30:00Z",
+//		Origin: models.TaxCloudAddress{
+//			Line1: "323 Washington Ave N",
+//			City:  "Minneapolis",
+//			State: "MN",
+//			Zip:   "55401-2427",
+//		},
+//		Destination: models.TaxCloudAddress{
+//			Line1: "323 Washington Ave N",
+//			City:  "Minneapolis",
+//			State: "MN",
+//			Zip:   "55401-2427",
+//		},
+//		LineItems: []models.CartItemWithTax{
+//			{
+//				Index:    0,
+//				ItemID:   "item-1",
+//				Price:    10.8,
+//				Quantity: 1.5,
+//				Tax: models.Tax{
+//					Amount: 1.31,
+//					Rate:   0.0813,
+//				},
+//			},
+//		},
+//		Currency: &models.Currency{},
+//	}
+//	response, err := client.CreateOrder(ctx, orderReq)
+//	if err != nil {
+//		return fmt.Errorf("failed to create order: %w", err)
+//	}
+//	fmt.Printf("Order created with ID: %s\n", response.OrderID)
+func (c *Client) CreateOrder(ctx context.Context, request *models.CreateOrderRequest) (*models.OrderResponse, error) {
+	// Check if TaxCloud credentials are configured
+	if !c.config.HasTaxCloudCredentials() {
+		return nil, ErrTaxCloudNotConfigured
+	}
+
+	// Build the path with connection ID
+	path := fmt.Sprintf("/tax/connections/%s/orders", c.config.TaxCloudConnectionID)
+
+	// Set up authentication headers
+	headers := map[string]string{
+		"X-API-Key": c.config.TaxCloudAPIKey,
+	}
+
+	// Make the POST request to TaxCloud API
+	var response models.OrderResponse
+	if err := c.httpClient.Post(ctx, c.config.TaxCloudBaseURL, path, headers, request, &response); err != nil {
+		return nil, wrapError("failed to create order", err)
+	}
+
+	return &response, nil
+}
+
+// GetOrder retrieves a specific order by its ID from TaxCloud.
+// This function requires TaxCloud credentials to be configured during client initialization.
+//
+// Example:
+//
+//	ctx := context.Background()
+//	order, err := client.GetOrder(ctx, "order-123")
+//	if err != nil {
+//		return fmt.Errorf("failed to get order: %w", err)
+//	}
+//	fmt.Printf("Order %s has %d line items\n", order.OrderID, len(order.LineItems))
+func (c *Client) GetOrder(ctx context.Context, orderID string) (*models.OrderResponse, error) {
+	// Check if TaxCloud credentials are configured
+	if !c.config.HasTaxCloudCredentials() {
+		return nil, ErrTaxCloudNotConfigured
+	}
+
+	// Build the path with connection ID and order ID
+	path := fmt.Sprintf("/tax/connections/%s/orders/%s", c.config.TaxCloudConnectionID, orderID)
+
+	// Set up authentication headers
+	headers := map[string]string{
+		"X-API-Key": c.config.TaxCloudAPIKey,
+	}
+
+	// Make the GET request to TaxCloud API
+	var response models.OrderResponse
+	if err := c.httpClient.GetWithOptions(ctx, c.config.TaxCloudBaseURL, path, headers, &response); err != nil {
+		return nil, wrapError("failed to get order", err)
+	}
+
+	return &response, nil
+}
+
+// UpdateOrder updates an existing order's completedDate in TaxCloud.
+// Use this endpoint to change when an order was shipped/completed.
+// This function requires TaxCloud credentials to be configured during client initialization.
+//
+// Example:
+//
+//	ctx := context.Background()
+//	updateReq := &models.UpdateOrderRequest{
+//		CompletedDate: "2024-01-16T10:00:00Z",
+//	}
+//	order, err := client.UpdateOrder(ctx, "order-123", updateReq)
+//	if err != nil {
+//		return fmt.Errorf("failed to update order: %w", err)
+//	}
+//	fmt.Printf("Order updated with new completed date: %s\n", order.CompletedDate)
+func (c *Client) UpdateOrder(ctx context.Context, orderID string, request *models.UpdateOrderRequest) (*models.OrderResponse, error) {
+	// Check if TaxCloud credentials are configured
+	if !c.config.HasTaxCloudCredentials() {
+		return nil, ErrTaxCloudNotConfigured
+	}
+
+	// Build the path with connection ID and order ID
+	path := fmt.Sprintf("/tax/connections/%s/orders/%s", c.config.TaxCloudConnectionID, orderID)
+
+	// Set up authentication headers
+	headers := map[string]string{
+		"X-API-Key": c.config.TaxCloudAPIKey,
+	}
+
+	// Make the PATCH request to TaxCloud API
+	var response models.OrderResponse
+	if err := c.httpClient.Patch(ctx, c.config.TaxCloudBaseURL, path, headers, request, &response); err != nil {
+		return nil, wrapError("failed to update order", err)
+	}
+
+	return &response, nil
+}
+
+// RefundOrder creates a refund against an order in TaxCloud.
+// An order can only be refunded once, regardless of whether the order is partially or fully refunded.
+// This function requires TaxCloud credentials to be configured during client initialization.
+//
+// Example (partial refund):
+//
+//	ctx := context.Background()
+//	refundReq := &models.RefundTransactionRequest{
+//		Items: []models.CartItemRefundWithTaxRequest{
+//			{
+//				ItemID:   "item-1",
+//				Quantity: 1.0,
+//			},
+//		},
+//	}
+//	refunds, err := client.RefundOrder(ctx, "order-123", refundReq)
+//	if err != nil {
+//		return fmt.Errorf("failed to refund order: %w", err)
+//	}
+//	fmt.Printf("Refunded %d items\n", len(refunds[0].Items))
+//
+// Example (full refund):
+//
+//	ctx := context.Background()
+//	refundReq := &models.RefundTransactionRequest{} // Empty request for full refund
+//	refunds, err := client.RefundOrder(ctx, "order-123", refundReq)
+func (c *Client) RefundOrder(ctx context.Context, orderID string, request *models.RefundTransactionRequest) ([]models.RefundTransactionResponse, error) {
+	// Check if TaxCloud credentials are configured
+	if !c.config.HasTaxCloudCredentials() {
+		return nil, ErrTaxCloudNotConfigured
+	}
+
+	// Build the path with connection ID and order ID
+	path := fmt.Sprintf("/tax/connections/%s/orders/refunds/%s", c.config.TaxCloudConnectionID, orderID)
+
+	// Set up authentication headers
+	headers := map[string]string{
+		"X-API-Key": c.config.TaxCloudAPIKey,
+	}
+
+	// Make the POST request to TaxCloud API
+	var response []models.RefundTransactionResponse
+	if err := c.httpClient.Post(ctx, c.config.TaxCloudBaseURL, path, headers, request, &response); err != nil {
+		return nil, wrapError("failed to refund order", err)
+	}
+
+	return response, nil
+}
+
+// wrapError converts internal HTTP APIError to public APIError for proper errors.As support,
+// then wraps it with a descriptive message.
+func wrapError(msg string, err error) error {
+	var internalErr *internalhttp.APIError
+	if errors.As(err, &internalErr) {
+		return fmt.Errorf("%s: %w", msg, &APIError{
+			StatusCode: internalErr.StatusCode,
+			Code:       internalErr.Code,
+			Name:       internalErr.Name,
+			Message:    internalErr.Message,
+		})
+	}
+	return fmt.Errorf("%s: %w", msg, err)
 }

@@ -9,6 +9,9 @@ const (
 	// DefaultBaseURL is the default base URL for the ZipTax API.
 	DefaultBaseURL = "https://api.zip-tax.com"
 
+	// DefaultTaxCloudBaseURL is the default base URL for the TaxCloud API.
+	DefaultTaxCloudBaseURL = "https://api.v3.taxcloud.com"
+
 	// DefaultTimeout is the default HTTP client timeout.
 	DefaultTimeout = 30 * time.Second
 
@@ -61,6 +64,20 @@ type Config struct {
 	// UserAgent is the User-Agent header to send with requests.
 	// Defaults to "ziptax-go/{version}".
 	UserAgent string
+
+	// TaxCloud configuration (optional - required for order management features)
+
+	// TaxCloudConnectionID is the TaxCloud Connection ID for order operations.
+	// If not provided, TaxCloud order features will not be available.
+	TaxCloudConnectionID string
+
+	// TaxCloudAPIKey is the TaxCloud API key for authentication.
+	// If not provided, TaxCloud order features will not be available.
+	TaxCloudAPIKey string
+
+	// TaxCloudBaseURL is the base URL for the TaxCloud API.
+	// Defaults to DefaultTaxCloudBaseURL if not specified.
+	TaxCloudBaseURL string
 }
 
 // Logger is an interface for logging.
@@ -106,6 +123,18 @@ func (c *Config) applyDefaults() {
 	}
 
 	if c.UserAgent == "" {
-		c.UserAgent = "ziptax-go/1.0.0"
+		c.UserAgent = "ziptax-go/" + Version
 	}
+
+	// Apply TaxCloud defaults if TaxCloud credentials are provided
+	if c.TaxCloudConnectionID != "" && c.TaxCloudAPIKey != "" {
+		if c.TaxCloudBaseURL == "" {
+			c.TaxCloudBaseURL = DefaultTaxCloudBaseURL
+		}
+	}
+}
+
+// HasTaxCloudCredentials returns true if TaxCloud credentials are configured.
+func (c *Config) HasTaxCloudCredentials() bool {
+	return c.TaxCloudConnectionID != "" && c.TaxCloudAPIKey != ""
 }
