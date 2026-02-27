@@ -82,8 +82,7 @@ func (c *Client) CalculateCart(ctx context.Context, request *models.CalculateCar
 
 	// Build validation input
 	validationInput := &validation.CartValidationInput{
-		ItemCount: len(request.Items),
-		Items:     make([]validation.CartItemInput, len(request.Items)),
+		Items: make([]validation.CartItemInput, len(request.Items)),
 	}
 	for i, item := range request.Items {
 		lineItems := make([]validation.CartLineItemInput, len(item.LineItems))
@@ -99,7 +98,6 @@ func (c *Client) CalculateCart(ctx context.Context, request *models.CalculateCar
 			CurrencyCode:    item.Currency.CurrencyCode,
 			DestinationAddr: item.Destination.Address,
 			OriginAddr:      item.Origin.Address,
-			LineItemCount:   len(item.LineItems),
 			LineItems:       lineItems,
 		}
 	}
@@ -199,24 +197,36 @@ func transformToTaxCloudCartRequest(request *models.CalculateCartRequest) (*mode
 			}
 		}
 
+		// Build destination TaxCloudAddress
+		destTCAddr := models.TaxCloudAddress{
+			Line1:       destAddr.Line1,
+			City:        destAddr.City,
+			State:       destAddr.State,
+			Zip:         destAddr.Zip,
+			CountryCode: &destAddr.CountryCode,
+		}
+		if destAddr.Line2 != "" {
+			destTCAddr.Line2 = &destAddr.Line2
+		}
+
+		// Build origin TaxCloudAddress
+		originTCAddr := models.TaxCloudAddress{
+			Line1:       originAddr.Line1,
+			City:        originAddr.City,
+			State:       originAddr.State,
+			Zip:         originAddr.Zip,
+			CountryCode: &originAddr.CountryCode,
+		}
+		if originAddr.Line2 != "" {
+			originTCAddr.Line2 = &originAddr.Line2
+		}
+
 		tcItems[i] = models.TaxCloudCartItem{
-			CustomerID: item.CustomerID,
-			Currency:   item.Currency,
-			Destination: models.TaxCloudAddress{
-				Line1:       destAddr.Line1,
-				City:        destAddr.City,
-				State:       destAddr.State,
-				Zip:         destAddr.Zip,
-				CountryCode: &destAddr.CountryCode,
-			},
-			Origin: models.TaxCloudAddress{
-				Line1:       originAddr.Line1,
-				City:        originAddr.City,
-				State:       originAddr.State,
-				Zip:         originAddr.Zip,
-				CountryCode: &originAddr.CountryCode,
-			},
-			LineItems: tcLineItems,
+			CustomerID:  item.CustomerID,
+			Currency:    item.Currency,
+			Destination: destTCAddr,
+			Origin:      originTCAddr,
+			LineItems:   tcLineItems,
 		}
 	}
 

@@ -70,9 +70,10 @@ type TaxCloudCartLineItemResponse struct {
 	TIC *int64 `json:"tic,omitempty"`
 }
 
-// TaxCloudCalculateCartRequest represents the internal request structure sent to the TaxCloud API
+// TaxCloudCalculateCartRequest represents the request structure sent to the TaxCloud API
 // after transforming from the shared CalculateCartRequest.
-// This type is not exported to users; it is used internally by the SDK for request transformation.
+// This type is exported for cross-package access within the SDK but is not part of the
+// user-facing API contract. Users should construct CalculateCartRequest instead.
 type TaxCloudCalculateCartRequest struct {
 	// Items is the array of cart items in TaxCloud format
 	Items []TaxCloudCartItem `json:"items"`

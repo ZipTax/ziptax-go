@@ -7,8 +7,7 @@ import (
 // CartValidationInput holds the fields needed to validate a CalculateCartRequest.
 // This avoids importing the models package into the validation package.
 type CartValidationInput struct {
-	ItemCount int
-	Items     []CartItemInput
+	Items []CartItemInput
 }
 
 // CartItemInput holds the fields needed to validate a single cart item.
@@ -17,7 +16,6 @@ type CartItemInput struct {
 	CurrencyCode    string
 	DestinationAddr string
 	OriginAddr      string
-	LineItemCount   int
 	LineItems       []CartLineItemInput
 }
 
@@ -30,11 +28,12 @@ type CartLineItemInput struct {
 
 // ValidateCalculateCartRequest validates the input for a CalculateCart request.
 func ValidateCalculateCartRequest(input *CartValidationInput) error {
-	if input.ItemCount == 0 {
-		return fmt.Errorf("items array must contain exactly 1 cart element, got 0")
+	if input == nil {
+		return fmt.Errorf("validation input cannot be nil")
 	}
-	if input.ItemCount != 1 {
-		return fmt.Errorf("items array must contain exactly 1 cart element, got %d", input.ItemCount)
+
+	if len(input.Items) != 1 {
+		return fmt.Errorf("items array must contain exactly 1 cart element, got %d", len(input.Items))
 	}
 
 	item := input.Items[0]
@@ -55,11 +54,12 @@ func ValidateCalculateCartRequest(input *CartValidationInput) error {
 		return fmt.Errorf("origin.address is required")
 	}
 
-	if item.LineItemCount == 0 {
+	lineItemCount := len(item.LineItems)
+	if lineItemCount == 0 {
 		return fmt.Errorf("lineItems must contain at least 1 item")
 	}
-	if item.LineItemCount > 250 {
-		return fmt.Errorf("lineItems must not exceed 250 items, got %d", item.LineItemCount)
+	if lineItemCount > 250 {
+		return fmt.Errorf("lineItems must not exceed 250 items, got %d", lineItemCount)
 	}
 
 	for i, li := range item.LineItems {

@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,14 +11,12 @@ import (
 func TestValidateCalculateCartRequest(t *testing.T) {
 	validInput := func() *CartValidationInput {
 		return &CartValidationInput{
-			ItemCount: 1,
 			Items: []CartItemInput{
 				{
 					CustomerID:      "customer-453",
 					CurrencyCode:    "USD",
 					DestinationAddr: "200 Spectrum Center Dr, Irvine, CA 92618",
 					OriginAddr:      "323 Washington Ave N, Minneapolis, MN 55401",
-					LineItemCount:   1,
 					LineItems: []CartLineItemInput{
 						{
 							ItemID:   "item-1",
@@ -37,7 +36,6 @@ func TestValidateCalculateCartRequest(t *testing.T) {
 
 	t.Run("valid request with multiple line items", func(t *testing.T) {
 		input := validInput()
-		input.Items[0].LineItemCount = 3
 		input.Items[0].LineItems = []CartLineItemInput{
 			{ItemID: "item-1", Price: 10.75, Quantity: 1.5},
 			{ItemID: "item-2", Price: 5.00, Quantity: 2.0},
@@ -47,10 +45,14 @@ func TestValidateCalculateCartRequest(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("nil input", func(t *testing.T) {
+		err := ValidateCalculateCartRequest(nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "cannot be nil")
+	})
+
 	t.Run("empty items array", func(t *testing.T) {
-		input := validInput()
-		input.ItemCount = 0
-		input.Items = nil
+		input := &CartValidationInput{Items: nil}
 		err := ValidateCalculateCartRequest(input)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "exactly 1 cart element")
@@ -59,7 +61,6 @@ func TestValidateCalculateCartRequest(t *testing.T) {
 
 	t.Run("multiple cart items", func(t *testing.T) {
 		input := validInput()
-		input.ItemCount = 2
 		input.Items = append(input.Items, input.Items[0])
 		err := ValidateCalculateCartRequest(input)
 		require.Error(t, err)
@@ -101,7 +102,6 @@ func TestValidateCalculateCartRequest(t *testing.T) {
 
 	t.Run("no line items", func(t *testing.T) {
 		input := validInput()
-		input.Items[0].LineItemCount = 0
 		input.Items[0].LineItems = nil
 		err := ValidateCalculateCartRequest(input)
 		require.Error(t, err)
@@ -110,7 +110,15 @@ func TestValidateCalculateCartRequest(t *testing.T) {
 
 	t.Run("too many line items", func(t *testing.T) {
 		input := validInput()
-		input.Items[0].LineItemCount = 251
+		items := make([]CartLineItemInput, 251)
+		for i := range items {
+			items[i] = CartLineItemInput{
+				ItemID:   fmt.Sprintf("item-%d", i),
+				Price:    10.0,
+				Quantity: 1.0,
+			}
+		}
+		input.Items[0].LineItems = items
 		err := ValidateCalculateCartRequest(input)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "must not exceed 250")
@@ -158,7 +166,6 @@ func TestValidateCalculateCartRequest(t *testing.T) {
 
 	t.Run("second line item validation", func(t *testing.T) {
 		input := validInput()
-		input.Items[0].LineItemCount = 2
 		input.Items[0].LineItems = append(input.Items[0].LineItems, CartLineItemInput{
 			ItemID:   "",
 			Price:    10.0,

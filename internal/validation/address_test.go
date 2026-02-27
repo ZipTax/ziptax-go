@@ -12,6 +12,7 @@ func TestParseAddress(t *testing.T) {
 		result, err := ParseAddress("200 Spectrum Center Dr, Irvine, CA 92618")
 		require.NoError(t, err)
 		assert.Equal(t, "200 Spectrum Center Dr", result.Line1)
+		assert.Equal(t, "", result.Line2)
 		assert.Equal(t, "Irvine", result.City)
 		assert.Equal(t, "CA", result.State)
 		assert.Equal(t, "92618", result.Zip)
@@ -53,15 +54,42 @@ func TestParseAddress(t *testing.T) {
 		assert.Equal(t, "CA", result.State)
 	})
 
-	t.Run("address with extra comma segments", func(t *testing.T) {
-		// Extra segments in the middle should still work - last segment is state+zip
+	t.Run("address with suite maps to Line2", func(t *testing.T) {
 		result, err := ParseAddress("200 Spectrum Center Dr, Suite 100, Irvine, CA 92618")
 		require.NoError(t, err)
 		assert.Equal(t, "200 Spectrum Center Dr", result.Line1)
-		// city comes from second segment
-		assert.Equal(t, "Suite 100", result.City)
+		assert.Equal(t, "Suite 100", result.Line2)
+		assert.Equal(t, "Irvine", result.City)
 		assert.Equal(t, "CA", result.State)
 		assert.Equal(t, "92618", result.Zip)
+	})
+
+	t.Run("address with multiple middle segments joined as Line2", func(t *testing.T) {
+		result, err := ParseAddress("200 Spectrum Center Dr, Bldg A, Suite 100, Irvine, CA 92618")
+		require.NoError(t, err)
+		assert.Equal(t, "200 Spectrum Center Dr", result.Line1)
+		assert.Equal(t, "Bldg A, Suite 100", result.Line2)
+		assert.Equal(t, "Irvine", result.City)
+		assert.Equal(t, "CA", result.State)
+		assert.Equal(t, "92618", result.Zip)
+	})
+
+	t.Run("address with apartment number", func(t *testing.T) {
+		result, err := ParseAddress("123 Main St, Apt 4B, New York, NY 10001")
+		require.NoError(t, err)
+		assert.Equal(t, "123 Main St", result.Line1)
+		assert.Equal(t, "Apt 4B", result.Line2)
+		assert.Equal(t, "New York", result.City)
+		assert.Equal(t, "NY", result.State)
+		assert.Equal(t, "10001", result.Zip)
+	})
+
+	t.Run("three segments has no Line2", func(t *testing.T) {
+		result, err := ParseAddress("200 Spectrum Center Dr, Irvine, CA 92618")
+		require.NoError(t, err)
+		assert.Equal(t, "200 Spectrum Center Dr", result.Line1)
+		assert.Equal(t, "", result.Line2)
+		assert.Equal(t, "Irvine", result.City)
 	})
 
 	t.Run("empty address", func(t *testing.T) {
@@ -100,6 +128,15 @@ func TestParseAddress(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "city")
 		assert.Contains(t, err.Error(), "cannot be empty")
+	})
+
+	t.Run("empty middle segment skipped in Line2", func(t *testing.T) {
+		// Empty middle segments between line1 and city are skipped
+		result, err := ParseAddress("200 Spectrum Center Dr, , Suite 100, Irvine, CA 92618")
+		require.NoError(t, err)
+		assert.Equal(t, "200 Spectrum Center Dr", result.Line1)
+		assert.Equal(t, "Suite 100", result.Line2)
+		assert.Equal(t, "Irvine", result.City)
 	})
 
 	t.Run("empty state zip segment", func(t *testing.T) {

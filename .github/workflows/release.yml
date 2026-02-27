@@ -104,7 +104,7 @@ jobs:
       - name: Trigger pkg.go.dev indexing
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
-          curl -X POST "https://proxy.golang.org/github.com/ziptax/ziptax-go/@v/${VERSION}.info"
+          curl --fail --silent --show-error "https://proxy.golang.org/github.com/ziptax/ziptax-go/@v/${VERSION}.info"
           echo "Triggered pkg.go.dev indexing for version ${VERSION}"
 
       - name: Wait for indexing
