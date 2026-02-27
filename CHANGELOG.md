@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1-beta] - 2026-02-27
+
+### Added
+- **Cart Tax Calculation**: `CalculateCart` method with dual API routing
+  - Routes to ZipTax `/calculate/cart` by default
+  - Automatically routes to TaxCloud `/tax/connections/{connectionId}/carts` when TaxCloud credentials are configured
+  - Same input contract (`CalculateCartRequest`) regardless of backend
+- `CalculateCartResult` interface for polymorphic return types (`*CalculateCartResponse` or `*TaxCloudCalculateCartResponse`)
+- Cart request/response models in `models/cart.go`:
+  - `CalculateCartRequest`, `CartItem`, `CartAddress`, `CartCurrency`, `CartLineItem`
+  - `CalculateCartResponse`, `CartItemResponse`, `CartLineItemResponse`, `CartTax`
+- TaxCloud cart models in `models/taxcloud_cart.go`:
+  - `TaxCloudCalculateCartResponse`, `TaxCloudCartItemResponse`, `TaxCloudCartLineItemResponse`
+  - `TaxCloudCalculateCartRequest`, `TaxCloudCartItem`, `TaxCloudCartLineItem` (internal transformation types)
+- Address parsing utility (`ParseAddress`) for transforming single-string addresses to TaxCloud structured format
+- Cart request validation: items count, currency, addresses, line item fields (price > 0, quantity > 0, max 250 items)
+- TaxabilityCode to TIC mapping with nil-safe default (0)
+- Auto-generated 0-based line item indices for TaxCloud requests
+- Comprehensive test coverage for cart calculation (52 new tests across 3 test files)
+
+### Changed
+- Test coverage improved from 88.5% to 92.7% on root package
+- Validation package now at 100% coverage
+
 ## [0.2.0-beta] - 2026-02-16
 
 ### Added

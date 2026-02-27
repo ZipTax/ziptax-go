@@ -95,3 +95,28 @@ jobs:
         run: |
           echo "✅ Release ${{ steps.get_version.outputs.tag }} created successfully!"
           echo "🔗 View release: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_version.outputs.tag }}"
+  notify-pkg-go-dev:
+    name: Notify pkg.go.dev
+    runs-on: ubuntu-latest
+    needs: release
+
+    steps:
+      - name: Trigger pkg.go.dev indexing
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          curl -X POST "https://proxy.golang.org/github.com/ziptax/ziptax-go/@v/${VERSION}.info"
+          echo "Triggered pkg.go.dev indexing for version ${VERSION}"
+
+      - name: Wait for indexing
+        run: sleep 30
+
+      - name: Verify package availability
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://pkg.go.dev/github.com/ziptax/ziptax-go@${VERSION}")
+          if [ "$STATUS" == "200" ]; then
+            echo "Package is available on pkg.go.dev"
+          else
+            echo "Package may not be available yet (status: $STATUS)"
+            echo "It may take a few minutes for pkg.go.dev to index the new version"
+          fi
