@@ -1196,6 +1196,23 @@ func TestCreateOrderFromCart_NoCredentials(t *testing.T) {
 	assert.ErrorIs(t, err, ErrTaxCloudNotConfigured)
 }
 
+func TestCreateOrderFromCart_NilRequest(t *testing.T) {
+	client, err := NewClient(
+		"test-api-key",
+		WithTaxCloudConnectionID("conn-123"),
+		WithTaxCloudAPIKey("tc-api-key"),
+	)
+	require.NoError(t, err)
+
+	_, err = client.CreateOrderFromCart(context.Background(), nil)
+	require.Error(t, err)
+
+	var valErr *ValidationError
+	require.ErrorAs(t, err, &valErr)
+	assert.Equal(t, "request", valErr.Field)
+	assert.Contains(t, valErr.Message, "request cannot be nil")
+}
+
 func TestCreateOrderFromCart_EmptyCartID(t *testing.T) {
 	client, err := NewClient(
 		"test-api-key",

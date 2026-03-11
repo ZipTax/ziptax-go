@@ -537,6 +537,14 @@ func (c *Client) CreateOrderFromCart(ctx context.Context, request *models.Create
 	}
 
 	// Validate request
+	if request == nil {
+		return nil, &ValidationError{
+			Field:   "request",
+			Value:   "",
+			Message: "request cannot be nil",
+		}
+	}
+
 	if err := validation.ValidateCreateOrderFromCartRequest(&validation.CreateOrderFromCartValidationInput{
 		CartID:  request.CartID,
 		OrderID: request.OrderID,
