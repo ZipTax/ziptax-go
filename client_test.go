@@ -707,6 +707,23 @@ func TestCreateOrder_Success(t *testing.T) {
 	assert.Equal(t, 1.31, response.LineItems[0].Tax.Amount)
 }
 
+func TestCreateOrder_NilRequest(t *testing.T) {
+	client, err := NewClient(
+		"test-api-key",
+		WithTaxCloudConnectionID("conn-123"),
+		WithTaxCloudAPIKey("tc-api-key"),
+	)
+	require.NoError(t, err)
+
+	_, err = client.CreateOrder(context.Background(), nil)
+	require.Error(t, err)
+
+	var valErr *ValidationError
+	require.ErrorAs(t, err, &valErr)
+	assert.Equal(t, "request", valErr.Field)
+	assert.Contains(t, valErr.Message, "request cannot be nil")
+}
+
 func TestCreateOrder_APIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -906,6 +923,23 @@ func TestUpdateOrder_NoCredentials(t *testing.T) {
 	assert.ErrorIs(t, err, ErrTaxCloudNotConfigured)
 }
 
+func TestUpdateOrder_NilRequest(t *testing.T) {
+	client, err := NewClient(
+		"test-api-key",
+		WithTaxCloudConnectionID("conn-123"),
+		WithTaxCloudAPIKey("tc-api-key"),
+	)
+	require.NoError(t, err)
+
+	_, err = client.UpdateOrder(context.Background(), "order-123", nil)
+	require.Error(t, err)
+
+	var valErr *ValidationError
+	require.ErrorAs(t, err, &valErr)
+	assert.Equal(t, "request", valErr.Field)
+	assert.Contains(t, valErr.Message, "request cannot be nil")
+}
+
 func TestUpdateOrder_APIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -1034,6 +1068,23 @@ func TestRefundOrder_NoCredentials(t *testing.T) {
 	_, err = client.RefundOrder(context.Background(), "order-123", refundReq)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrTaxCloudNotConfigured)
+}
+
+func TestRefundOrder_NilRequest(t *testing.T) {
+	client, err := NewClient(
+		"test-api-key",
+		WithTaxCloudConnectionID("conn-123"),
+		WithTaxCloudAPIKey("tc-api-key"),
+	)
+	require.NoError(t, err)
+
+	_, err = client.RefundOrder(context.Background(), "order-123", nil)
+	require.Error(t, err)
+
+	var valErr *ValidationError
+	require.ErrorAs(t, err, &valErr)
+	assert.Equal(t, "request", valErr.Field)
+	assert.Contains(t, valErr.Message, "request cannot be nil")
 }
 
 func TestRefundOrder_APIError(t *testing.T) {

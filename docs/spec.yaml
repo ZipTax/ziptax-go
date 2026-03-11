@@ -317,12 +317,18 @@ resources:
                   to: "TaxCloudAddress (structured: line1, city, state, zip, countryCode)"
                   note: |
                     Parse the single address string into structured components.
-                    Use a simple parsing strategy:
-                      - Split the address string by comma
-                      - line1 = first segment (street address)
-                      - city = second segment
-                      - Parse last segment for state and zip (e.g., "CA 92618" or "CA 92618-1905")
+                    Uses an edges-inward parsing strategy:
+                      - Split the address string by comma (minimum 3 segments required)
+                      - First segment: street address (Line1)
+                      - Last segment: state and zip code (e.g., "CA 92618" or "MN 55401-2427")
+                      - Second-to-last segment: city
+                      - Any middle segments between first and second-to-last: joined into Line2 (supports suites, units, etc.)
                       - countryCode defaults to "US"
+                    Examples:
+                      "200 Spectrum Center Dr, Irvine, CA 92618"
+                        -> Line1: "200 Spectrum Center Dr", City: "Irvine"
+                      "200 Spectrum Center Dr, Suite 100, Irvine, CA 92618"
+                        -> Line1: "200 Spectrum Center Dr", Line2: "Suite 100", City: "Irvine"
                     If parsing fails, return a ValidationError with a
                     descriptive message advising the user to provide a properly
                     formatted address string.

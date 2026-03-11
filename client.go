@@ -371,6 +371,15 @@ func (c *Client) CreateOrder(ctx context.Context, request *models.CreateOrderReq
 		return nil, ErrTaxCloudNotConfigured
 	}
 
+	// Validate request
+	if request == nil {
+		return nil, &ValidationError{
+			Field:   "request",
+			Value:   "",
+			Message: "request cannot be nil",
+		}
+	}
+
 	// Build the path with connection ID
 	path := fmt.Sprintf("/tax/connections/%s/orders", c.config.TaxCloudConnectionID)
 
@@ -443,6 +452,15 @@ func (c *Client) UpdateOrder(ctx context.Context, orderID string, request *model
 		return nil, ErrTaxCloudNotConfigured
 	}
 
+	// Validate request
+	if request == nil {
+		return nil, &ValidationError{
+			Field:   "request",
+			Value:   "",
+			Message: "request cannot be nil",
+		}
+	}
+
 	// Build the path with connection ID and order ID
 	path := fmt.Sprintf("/tax/connections/%s/orders/%s", c.config.TaxCloudConnectionID, orderID)
 
@@ -490,6 +508,15 @@ func (c *Client) RefundOrder(ctx context.Context, orderID string, request *model
 	// Check if TaxCloud credentials are configured
 	if !c.config.HasTaxCloudCredentials() {
 		return nil, ErrTaxCloudNotConfigured
+	}
+
+	// Validate request
+	if request == nil {
+		return nil, &ValidationError{
+			Field:   "request",
+			Value:   "",
+			Message: "request cannot be nil",
+		}
 	}
 
 	// Build the path with connection ID and order ID
