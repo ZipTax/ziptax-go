@@ -565,9 +565,8 @@ resources:
           stored the returned cartId from that response.
 
           TaxCloud automatically commits the order at the time of creation,
-          finalizing it for tax filing. If you need to delay finalizing the
-          order (for example, for fulfillment or payment verification), omit
-          the completedDate and update it later using UpdateOrder.
+          finalizing it for tax filing. To set a completed date on the order,
+          use UpdateOrder after creation.
 
           The transactionDate is automatically set by TaxCloud to the moment
           the endpoint is called.
@@ -586,7 +585,7 @@ resources:
             example: "25eb9b97-5acb-492d-b720-c03e79cf715a"
         request_body:
           type: "CreateOrderFromCartRequest"
-          description: "Cart-to-order conversion details including the cartId from a previous CalculateCart response, the user's internal orderId, and an optional completedDate"
+          description: "Cart-to-order conversion details including the cartId from a previous CalculateCart response and the user's internal orderId"
         returns:
           type: "OrderResponse"
           is_array: false
@@ -600,7 +599,6 @@ resources:
           request:
             - "cartId is required (non-empty string)"
             - "orderId is required (non-empty string)"
-            - "completedDate is optional (RFC3339 datetime string if provided)"
         errors:
           400:
             - "Invalid request format"
@@ -1801,9 +1799,8 @@ models:
       in TaxCloud. The user must have previously called CalculateCart with
       TaxCloud credentials and stored the returned cartId from the
       TaxCloudCartItemResponse. The orderId represents the user's internal
-      order identifier for cross-referencing. The optional completedDate
-      allows marking the order as fulfilled at creation time; if omitted,
-      the order can be completed later via UpdateOrder.
+      order identifier for cross-referencing. To set a completed date on
+      the order, use UpdateOrder after creation.
     api: "taxcloud"
     properties:
       - name: "cartId"
@@ -1821,12 +1818,6 @@ models:
         example: "my-order-1"
         validation:
           min_length: 1
-      - name: "completedDate"
-        type: "string"
-        format: "date-time"
-        required: false
-        description: "RFC3339 datetime string when the order was shipped/completed (creates tax liability). If omitted, the order is created without a completed date and can be updated later via UpdateOrder. Use pointer (*string) in Go struct with omitempty tag."
-        example: "2024-01-15T09:30:00Z"
 
   # ---------------------------------------------------------------------------
   # TaxCloud API Models - Refunds
@@ -2960,7 +2951,7 @@ version_history:
     date: "2026-03-11"
     changes:
       - "CreateOrderFromCart: create orders from previously calculated TaxCloud carts"
-      - "CreateOrderFromCartRequest model with cartId, orderId, and optional completedDate"
+      - "CreateOrderFromCartRequest model with cartId and orderId"
       - "Cart-to-order validation (cartId and orderId required)"
       - "POST /tax/connections/{connectionId}/carts/orders endpoint support"
       - "Reuses existing OrderResponse for consistent return types"

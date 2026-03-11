@@ -514,8 +514,7 @@ func (c *Client) RefundOrder(ctx context.Context, orderID string, request *model
 // the returned cartId from the TaxCloudCartItemResponse.
 //
 // TaxCloud automatically commits the order at the time of creation, finalizing it for tax
-// filing. If you need to delay finalizing the order (for example, for fulfillment or payment
-// verification), omit the CompletedDate and update it later using UpdateOrder.
+// filing. To set a completed date on the order, use UpdateOrder after creation.
 //
 // This function requires TaxCloud credentials to be configured during client initialization.
 //

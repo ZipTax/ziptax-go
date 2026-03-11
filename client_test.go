@@ -1182,63 +1182,6 @@ func TestCreateOrderFromCart_Success(t *testing.T) {
 	assert.Equal(t, 1.31, response.LineItems[0].Tax.Amount)
 }
 
-func TestCreateOrderFromCart_WithCompletedDate(t *testing.T) {
-	completedDate := "2024-01-15T09:30:00Z"
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/tax/connections/conn-123/carts/orders", r.URL.Path)
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{
-			"orderId": "my-order-1",
-			"customerId": "customer-456",
-			"connectionId": "conn-123",
-			"transactionDate": "2024-01-15T09:30:00Z",
-			"completedDate": "2024-01-15T09:30:00Z",
-			"origin": {
-				"line1": "200 Spectrum Center Drive",
-				"city": "Irvine",
-				"state": "CA",
-				"zip": "92618",
-				"countryCode": "US"
-			},
-			"destination": {
-				"line1": "323 Washington Ave N",
-				"city": "Minneapolis",
-				"state": "MN",
-				"zip": "55401-2427",
-				"countryCode": "US"
-			},
-			"lineItems": [],
-			"currency": {"currencyCode": "USD"},
-			"deliveredBySeller": false,
-			"excludeFromFiling": false
-		}`))
-	}))
-	defer server.Close()
-
-	client, err := NewClient(
-		"test-api-key",
-		WithTaxCloudConnectionID("conn-123"),
-		WithTaxCloudAPIKey("tc-api-key"),
-		WithTaxCloudBaseURL(server.URL),
-	)
-	require.NoError(t, err)
-
-	req := &models.CreateOrderFromCartRequest{
-		CartID:        "ce4a1234-5678-90ab-cdef-1234567890ab",
-		OrderID:       "my-order-1",
-		CompletedDate: &completedDate,
-	}
-
-	response, err := client.CreateOrderFromCart(context.Background(), req)
-	require.NoError(t, err)
-	assert.Equal(t, "my-order-1", response.OrderID)
-	assert.Equal(t, "2024-01-15T09:30:00Z", response.CompletedDate)
-}
-
 func TestCreateOrderFromCart_NoCredentials(t *testing.T) {
 	client, err := NewClient("test-api-key")
 	require.NoError(t, err)

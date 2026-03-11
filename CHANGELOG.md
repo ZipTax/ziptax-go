@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Create Order from Cart**: `CreateOrderFromCart` method for converting previously calculated TaxCloud carts into finalized orders
   - Posts to TaxCloud `POST /tax/connections/{connectionId}/carts/orders`
-  - Accepts `CreateOrderFromCartRequest` with `cartId` (required), `orderId` (required), and `completedDate` (optional)
+  - Accepts `CreateOrderFromCartRequest` with `cartId` (required) and `orderId` (required)
   - Returns existing `OrderResponse` type for consistent return types
   - Validates `cartId` and `orderId` before making API call
   - Requires TaxCloud credentials to be configured during client initialization
