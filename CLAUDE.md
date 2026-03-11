@@ -408,6 +408,15 @@ When extending this SDK with AI assistance:
 
 See [CHANGELOG.md](./CHANGELOG.md) for detailed release notes.
 
+### v0.2.1-beta (Cart Tax Calculation)
+- CalculateCart with dual API routing (ZipTax default, TaxCloud when configured)
+- Cart tax calculation models: request, response, line items, tax details
+- TaxCloud cart models with structured addresses and TIC mapping
+- CalculateCartResult interface for polymorphic return types
+- Address parsing utility for TaxCloud request transformation
+- Cart request validation (items, line items, currency, addresses)
+- Comprehensive test coverage (92.7%)
+
 ### v0.2.0-beta (TaxCloud Integration)
 - TaxCloud order management: CreateOrder, GetOrder, UpdateOrder, RefundOrder
 - Dual API support: ZipTax (required) + TaxCloud (optional)

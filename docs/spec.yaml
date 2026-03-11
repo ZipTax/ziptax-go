@@ -9,7 +9,7 @@
 project:
   name: "ziptax-go"
   language: "go"
-  version: "0.2.0-beta"
+  version: "0.2.1-beta"
   description: "Official Go SDK for the ZipTax and TaxCloud APIs"
   module_path: "github.com/ziptax/ziptax-go"
   minimum_go_version: "1.21"
@@ -253,6 +253,167 @@ resources:
         returns:
           type: "V60PostalCodeResponse"
           is_array: false
+
+      # -----------------------------------------------------------------------
+      # Cart Tax Calculation - Dual API Routing
+      # -----------------------------------------------------------------------
+      # The CalculateCart function supports TWO backends:
+      #   1. ZipTax API (default) - POST /calculate/cart
+      #   2. TaxCloud API (when configured) - POST /tax/connections/{connectionId}/carts
+      #
+      # Routing logic in Client.CalculateCart:
+      #   - If TaxCloud credentials ARE configured (HasTaxCloudCredentials() == true),
+      #     route to TaxCloud API and return *TaxCloudCalculateCartResponse
+      #   - If TaxCloud credentials are NOT configured, route to ZipTax API
+      #     and return *CalculateCartResponse
+      #
+      # The INPUT contract (CalculateCartRequest) is IDENTICAL for both backends.
+      # The SDK handles request transformation internally when routing to TaxCloud.
+      # The OUTPUT contract differs: *CalculateCartResponse vs *TaxCloudCalculateCartResponse.
+      # The return type uses an interface: CalculateCartResult (implemented by both response types).
+      # -----------------------------------------------------------------------
+
+      # ZipTax Cart Tax Calculation Endpoint (default when TaxCloud not configured)
+      - name: "CalculateCart"
+        api: "ziptax"
+        http_method: "POST"
+        path: "/calculate/cart"
+        description: |
+          Calculate sales tax for a single cart with multiple line items.
+          Accepts a cart with destination and origin addresses, calculates
+          per-item tax, and returns tax rate and amount for each line item.
+
+          ROUTING BEHAVIOR: When the SDK client is initialized with TaxCloud
+          credentials (WithTaxCloudConnectionID and WithTaxCloudAPIKey), this
+          function automatically routes the request to the TaxCloud API
+          instead of the ZipTax API. The input contract (CalculateCartRequest)
+          remains the same regardless of which backend is used. The SDK
+          transforms the request internally. The response type changes based
+          on the backend used.
+
+          IMPLEMENTATION NOTES for routing in Client.CalculateCart:
+            1. Check c.HasTaxCloudCredentials() at the START of the method
+            2. If true: transform request and POST to TaxCloud, return *TaxCloudCalculateCartResponse
+            3. If false: POST to ZipTax as-is (existing behavior), return *CalculateCartResponse
+            4. Return type: (CalculateCartResult, error) where CalculateCartResult is an interface
+        operation_id: "calculateCart"
+        routing:
+          condition: "HasTaxCloudCredentials()"
+          when_true:
+            api: "taxcloud"
+            path: "/tax/connections/{connectionId}/carts"
+            http_method: "POST"
+            returns:
+              type: "*TaxCloudCalculateCartResponse"
+              status_code: 200
+            request_transformation:
+              description: |
+                The SDK must transform the CalculateCartRequest into the
+                TaxCloud request format before sending. The transformation
+                maps the ZipTax-style request to TaxCloud's expected schema.
+              steps:
+                - field: "items[].destination"
+                  from: "CartAddress (single string: address)"
+                  to: "TaxCloudAddress (structured: line1, city, state, zip, countryCode)"
+                  note: |
+                    Parse the single address string into structured components.
+                    Use a simple parsing strategy:
+                      - Split the address string by comma
+                      - line1 = first segment (street address)
+                      - city = second segment
+                      - Parse last segment for state and zip (e.g., "CA 92618" or "CA 92618-1905")
+                      - countryCode defaults to "US"
+                    If parsing fails, return a ValidationError with a
+                    descriptive message advising the user to provide a properly
+                    formatted address string.
+                - field: "items[].origin"
+                  from: "CartAddress (single string: address)"
+                  to: "TaxCloudAddress (structured: line1, city, state, zip, countryCode)"
+                  note: "Same parsing logic as destination"
+                - field: "items[].lineItems[].taxabilityCode"
+                  from: "taxabilityCode (*int64)"
+                  to: "tic (int64, defaults to 0)"
+                  note: "Map taxabilityCode to TaxCloud's tic field. If nil, use 0."
+                - field: "items[].lineItems[].index"
+                  from: "(not present in CalculateCartRequest)"
+                  to: "index (int64, required by TaxCloud)"
+                  note: "Auto-generate index from the line item's position in the array (0-based)"
+                - field: "items[].currency.currencyCode"
+                  from: "string (USD)"
+                  to: "currencyCode (string, USD)"
+                  note: "Pass through as-is. SDK validates USD only since the ZipTax API requires it and CalculateCart uses a shared input contract."
+                - field: "transactionDate"
+                  from: "(not present in CalculateCartRequest)"
+                  to: "transactionDate (optional RFC3339 datetime)"
+                  note: "Not included in the transformed request; TaxCloud defaults to now"
+          when_false:
+            api: "ziptax"
+            path: "/calculate/cart"
+            http_method: "POST"
+            returns:
+              type: "*CalculateCartResponse"
+              status_code: 200
+        parameters: []
+        request_body:
+          type: "CalculateCartRequest"
+          description: "Cart with line items, addresses, and currency for tax calculation. Same input contract regardless of backend routing."
+        returns:
+          type: "CalculateCartResult"
+          description: "Interface type - returns *CalculateCartResponse or *TaxCloudCalculateCartResponse depending on TaxCloud configuration"
+          is_array: false
+          status_code: 200
+          note: "Return type depends on whether TaxCloud is configured. See routing section."
+        authentication:
+          type: "header"
+          header: "X-API-Key"
+          format: "{apiKey} or {taxCloudAPIKey}"
+          note: "Authentication header is determined by which backend is used. ZipTax uses ZipTax API key; TaxCloud uses TaxCloud API key. Both are already configured on their respective HTTP client instances."
+        validation:
+          cart:
+            - "items array must contain exactly 1 cart element"
+            - "currency.currencyCode must be 'USD'"
+            - "customerId is required (string)"
+            - "destination.address is required (string)"
+            - "origin.address is required (string)"
+          line_items:
+            - "Minimum: 1 line item"
+            - "Maximum: 250 line items per cart"
+            - "itemId: required (string)"
+            - "price: required (positive float64, greater than 0)"
+            - "quantity: required (positive float64, greater than 0, supports fractional values)"
+            - "taxabilityCode: optional (*int64, mapped to tic for TaxCloud, passed to v60 for ZipTax)"
+        tax_calculation:
+          formula: "taxAmount = (price x quantity) x taxRate"
+          rounding: "5 decimal places for both taxRate and taxAmount (ZipTax); API-determined for TaxCloud"
+          note: |
+            Tax calculation and origin/destination sourcing resolution are
+            performed by the respective API, not by the SDK.
+            The SDK sends the cart request and returns the response.
+          example: |
+            price = 10.75
+            quantity = 1.5
+            taxRate = 0.09025
+            taxAmount = (10.75 x 1.5) x 0.09025 = 1.45528
+        errors:
+          400:
+            - "Invalid request format"
+            - "Missing required fields"
+            - "Cart exceeds 250 line items"
+            - "More than one cart in request"
+            - "Address parsing failed (TaxCloud route only)"
+          401:
+            - "Missing X-API-KEY header"
+            - "Invalid or inactive API key"
+          403:
+            - "Forbidden (TaxCloud only)"
+          422:
+            - "Unprocessable Entity (TaxCloud only)"
+          429:
+            - "Too Many Requests (TaxCloud only)"
+          500:
+            - "Failed to calculate tax rate"
+            - "v60 API error (ZipTax only)"
+            - "Internal server error"
 
       # TaxCloud API Orders Endpoints
       - name: "CreateOrder"
@@ -942,6 +1103,301 @@ models:
         required: true
         api_field: "geoLng"
         description: "Longitude (0 for postal code lookups)"
+
+  # ---------------------------------------------------------------------------
+  # ZipTax Cart Tax Calculation Models
+  # ---------------------------------------------------------------------------
+  - name: "CalculateCartRequest"
+    description: "Request payload for calculating sales tax on a shopping cart. Wraps a single cart item in an 'items' array."
+    api: "ziptax"
+    properties:
+      - name: "items"
+        type: "array"
+        items_type: "CartItem"
+        required: true
+        description: "Array of cart items (must contain exactly 1 element)"
+        validation:
+          min_items: 1
+          max_items: 1
+
+  - name: "CartItem"
+    description: "A single cart containing customer info, addresses, currency, and line items for tax calculation"
+    api: "ziptax"
+    properties:
+      - name: "customerId"
+        type: "string"
+        required: true
+        description: "Customer identifier"
+        example: "customer-453"
+      - name: "currency"
+        type: "CartCurrency"
+        required: true
+        description: "Currency information (must be USD)"
+      - name: "destination"
+        type: "CartAddress"
+        required: true
+        description: "Destination address used for tax calculation"
+      - name: "origin"
+        type: "CartAddress"
+        required: true
+        description: "Origin address of the seller/shipper"
+      - name: "lineItems"
+        type: "array"
+        items_type: "CartLineItem"
+        required: true
+        description: "Array of line items in the cart (1-250 items)"
+        validation:
+          min_items: 1
+          max_items: 250
+
+  - name: "CartAddress"
+    description: "Simple address structure for cart tax calculation (single string format)"
+    api: "ziptax"
+    properties:
+      - name: "address"
+        type: "string"
+        required: true
+        description: "Full address string for geocoding"
+        example: "200 Spectrum Center Dr, Irvine, CA 92618-1905"
+
+  - name: "CartCurrency"
+    description: "Currency information for cart request"
+    api: "ziptax"
+    properties:
+      - name: "currencyCode"
+        type: "string"
+        required: true
+        description: "ISO currency code (must be USD)"
+        enum: ["USD"]
+        example: "USD"
+
+  - name: "CartLineItem"
+    description: "A line item in the cart request with product details for tax calculation"
+    api: "ziptax"
+    properties:
+      - name: "itemId"
+        type: "string"
+        required: true
+        description: "Unique identifier for the line item"
+        example: "item-1"
+      - name: "price"
+        type: "number"
+        format: "float64"
+        required: true
+        description: "Unit price of the item (must be positive, greater than 0)"
+        example: 10.75
+        validation:
+          exclusive_minimum: 0
+      - name: "quantity"
+        type: "number"
+        format: "float64"
+        required: true
+        description: "Quantity of the item (must be positive, greater than 0, supports fractional values for items sold by weight)"
+        example: 1.5
+        validation:
+          exclusive_minimum: 0
+      - name: "taxabilityCode"
+        type: "integer"
+        format: "int64"
+        required: false
+        description: "Taxability code for product-specific tax rules (passed to v60 tax engine if provided). Use pointer (*int64) in Go struct."
+        example: 0
+
+  - name: "CalculateCartResponse"
+    description: "Response from ZipTax cart tax calculation containing per-item tax details"
+    api: "ziptax"
+    notes: "Implements CalculateCartResult interface"
+    properties:
+      - name: "items"
+        type: "array"
+        items_type: "CartItemResponse"
+        required: true
+        description: "Array of cart results (mirrors request items array order)"
+
+  - name: "CartItemResponse"
+    description: "A single cart response with calculated tax information per line item"
+    api: "ziptax"
+    properties:
+      - name: "cartId"
+        type: "string"
+        format: "uuid"
+        required: true
+        description: "Server-generated UUID identifying this cart calculation"
+        example: "ce4a...ccefdd"
+      - name: "customerId"
+        type: "string"
+        required: true
+        description: "Customer identifier (echoed from request)"
+        example: "customer-453"
+      - name: "destination"
+        type: "CartAddress"
+        required: true
+        description: "Destination address (echoed from request)"
+      - name: "origin"
+        type: "CartAddress"
+        required: true
+        description: "Origin address (echoed from request)"
+      - name: "lineItems"
+        type: "array"
+        items_type: "CartLineItemResponse"
+        required: true
+        description: "Array of line items with calculated tax information"
+
+  - name: "CartLineItemResponse"
+    description: "A line item in the cart response with calculated tax rate and amount"
+    api: "ziptax"
+    properties:
+      - name: "itemId"
+        type: "string"
+        required: true
+        description: "Unique identifier for the line item (echoed from request)"
+        example: "item-1"
+      - name: "price"
+        type: "number"
+        format: "float64"
+        required: true
+        description: "Unit price of the item (echoed from request)"
+        example: 10.75
+      - name: "quantity"
+        type: "number"
+        format: "float64"
+        required: true
+        description: "Quantity of the item (echoed from request)"
+        example: 1.5
+      - name: "tax"
+        type: "CartTax"
+        required: true
+        description: "Calculated tax information for this line item"
+
+  - name: "CartTax"
+    description: "Calculated tax details for a cart line item"
+    api: "ziptax"
+    properties:
+      - name: "rate"
+        type: "number"
+        format: "float64"
+        required: true
+        description: "Calculated sales tax rate (rounded to 5 decimal places)"
+        example: 0.09025
+      - name: "amount"
+        type: "number"
+        format: "float64"
+        required: true
+        description: "Calculated tax amount: (price x quantity) x rate (rounded to 5 decimal places)"
+        example: 1.45528
+
+  # ---------------------------------------------------------------------------
+  # TaxCloud Cart Tax Calculation Models
+  # ---------------------------------------------------------------------------
+  # These models are used when CalculateCart routes to TaxCloud API.
+  # The SDK transforms the shared CalculateCartRequest into the TaxCloud
+  # request format internally, but these models define the TaxCloud
+  # response structure returned to the caller.
+  # ---------------------------------------------------------------------------
+
+  - name: "TaxCloudCalculateCartResponse"
+    description: |
+      Response from TaxCloud cart tax calculation. Returned by CalculateCart
+      when the client is configured with TaxCloud credentials. Contains the
+      connectionId, transactionDate, and an array of cart results with
+      TaxCloud-style structured addresses and line items with tax details.
+      Implements CalculateCartResult interface.
+    api: "taxcloud"
+    properties:
+      - name: "connectionId"
+        type: "string"
+        required: true
+        description: "TaxCloud Connection ID used for this cart calculation"
+        example: "25eb9b97-5acb-492d-b720-c03e79cf715a"
+      - name: "items"
+        type: "array"
+        items_type: "TaxCloudCartItemResponse"
+        required: true
+        description: "Array of cart results with calculated tax information"
+      - name: "transactionDate"
+        type: "string"
+        format: "date-time"
+        required: true
+        description: "RFC3339 datetime string the cart was calculated for"
+        example: "2024-01-15T09:30:00Z"
+
+  - name: "TaxCloudCartItemResponse"
+    description: "A single cart response from TaxCloud with calculated tax information per line item"
+    api: "taxcloud"
+    properties:
+      - name: "cartId"
+        type: "string"
+        required: true
+        description: "ID representing this cart. Auto-generated if not provided in the request."
+        example: "ce4a1234-5678-90ab-cdef-1234567890ab"
+      - name: "customerId"
+        type: "string"
+        required: true
+        description: "Customer identifier (echoed from request)"
+        example: "customer-453"
+      - name: "currency"
+        type: "CurrencyResponse"
+        required: true
+        description: "Currency information"
+      - name: "deliveredBySeller"
+        type: "boolean"
+        required: true
+        description: "Whether the seller directly delivered the order"
+      - name: "destination"
+        type: "TaxCloudAddressResponse"
+        required: true
+        description: "Destination address (structured format from TaxCloud)"
+      - name: "origin"
+        type: "TaxCloudAddressResponse"
+        required: true
+        description: "Origin address (structured format from TaxCloud)"
+      - name: "exemption"
+        type: "Exemption"
+        required: true
+        description: "Exemption information"
+      - name: "lineItems"
+        type: "array"
+        items_type: "TaxCloudCartLineItemResponse"
+        required: true
+        description: "Array of line items with calculated tax information"
+
+  - name: "TaxCloudCartLineItemResponse"
+    description: "A line item in the TaxCloud cart response with calculated tax rate and amount"
+    api: "taxcloud"
+    properties:
+      - name: "index"
+        type: "integer"
+        format: "int64"
+        required: true
+        description: "Position/index of item within the cart (0-based)"
+        example: 0
+      - name: "itemId"
+        type: "string"
+        required: true
+        description: "Unique identifier for the line item (echoed from request)"
+        example: "item-1"
+      - name: "price"
+        type: "number"
+        format: "float64"
+        required: true
+        description: "Unit price of the item (echoed from request)"
+        example: 10.8
+      - name: "quantity"
+        type: "number"
+        format: "float64"
+        required: true
+        description: "Quantity of the item (echoed from request)"
+        example: 1.5
+      - name: "tax"
+        type: "Tax"
+        required: true
+        description: "Calculated tax information for this line item (uses existing TaxCloud Tax model)"
+      - name: "tic"
+        type: "integer"
+        format: "int64"
+        required: false
+        description: "Taxability Information Code (mapped from taxabilityCode, defaults to 0). Nullable in API response - use *int64 in Go struct."
+        example: 0
 
   # ---------------------------------------------------------------------------
   # TaxCloud API Models - Order Management
@@ -1961,6 +2417,144 @@ actual_api_responses:
         }
       }
 
+  calculate_cart:
+    description: "Actual ZipTax response for CalculateCart"
+    endpoint: "POST /calculate/cart"
+    request_example: |
+      {
+        "items": [
+          {
+            "currency": { "currencyCode": "USD" },
+            "customerId": "customer-453",
+            "destination": {
+              "address": "200 Spectrum Center Dr, Irvine, CA 92618-1905"
+            },
+            "origin": {
+              "address": "323 Washington Ave N, Minneapolis, MN 55401-2427"
+            },
+            "lineItems": [
+              {
+                "itemId": "item-1",
+                "price": 10.75,
+                "quantity": 1.5,
+                "taxabilityCode": 0
+              }
+            ]
+          }
+        ]
+      }
+    response_example: |
+      {
+        "items": [
+          {
+            "cartId": "ce4a...ccefdd",
+            "customerId": "customer-453",
+            "destination": {
+              "address": "200 Spectrum Center Dr, Irvine, CA 92618-1905"
+            },
+            "origin": {
+              "address": "323 Washington Ave N, Minneapolis, MN 55401-2427"
+            },
+            "lineItems": [
+              {
+                "itemId": "item-1",
+                "price": 10.75,
+                "quantity": 1.5,
+                "tax": {
+                  "rate": 0.09025,
+                  "amount": 1.46
+                }
+              }
+            ]
+          }
+        ]
+      }
+
+  taxcloud_calculate_cart:
+    description: "Actual TaxCloud response for CalculateCart (when routed to TaxCloud)"
+    endpoint: "POST /tax/connections/{connectionId}/carts"
+    request_example: |
+      {
+        "items": [
+          {
+            "currency": { "currencyCode": "USD" },
+            "customerId": "customer-453",
+            "destination": {
+              "city": "Irvine",
+              "line1": "200 Spectrum Center Dr",
+              "state": "CA",
+              "zip": "92618-1905"
+            },
+            "origin": {
+              "city": "Minneapolis",
+              "line1": "323 Washington Ave N",
+              "state": "MN",
+              "zip": "55401-2427"
+            },
+            "lineItems": [
+              {
+                "index": 0,
+                "itemId": "item-1",
+                "price": 10.75,
+                "quantity": 1.5,
+                "tic": 0
+              }
+            ]
+          }
+        ]
+      }
+    response_example: |
+      {
+        "connectionId": "25eb9b97-5acb-492d-b720-c03e79cf715a",
+        "items": [
+          {
+            "cartId": "ce4a1234-5678-90ab-cdef-1234567890ab",
+            "customerId": "customer-453",
+            "currency": {
+              "currencyCode": "USD"
+            },
+            "deliveredBySeller": false,
+            "destination": {
+              "line1": "200 Spectrum Center Dr",
+              "city": "Irvine",
+              "state": "CA",
+              "zip": "92618-1905",
+              "countryCode": "US"
+            },
+            "origin": {
+              "line1": "323 Washington Ave N",
+              "city": "Minneapolis",
+              "state": "MN",
+              "zip": "55401-2427",
+              "countryCode": "US"
+            },
+            "exemption": {
+              "exemptionId": null,
+              "isExempt": null
+            },
+            "lineItems": [
+              {
+                "index": 0,
+                "itemId": "item-1",
+                "price": 10.75,
+                "quantity": 1.5,
+                "tax": {
+                  "amount": 1.46,
+                  "rate": 0.0903
+                },
+                "tic": 0
+              }
+            ]
+          }
+        ],
+        "transactionDate": "2024-01-15T09:30:00Z"
+      }
+    notes:
+      - "The request body shown above is the TRANSFORMED version (after SDK parsing)"
+      - "The SDK receives CalculateCartRequest with single-string addresses and transforms them"
+      - "TaxCloud returns structured addresses, connectionId, transactionDate, and per-item tic"
+      - "The response is wrapped in TaxCloudCalculateCartResponse, not CalculateCartResponse"
+
   taxcloud_create_order:
     description: "Actual TaxCloud response for CreateOrder"
     endpoint: "POST /tax/connections/{connectionId}/orders"
@@ -2260,6 +2854,17 @@ quality_requirements:
 # Version History
 # -----------------------------------------------------------------------------
 version_history:
+  - version: "0.2.1-beta"
+    date: "2026-02-27"
+    changes:
+      - "CalculateCart with dual API routing (ZipTax default, TaxCloud when configured)"
+      - "Cart tax calculation models: CalculateCartRequest, CalculateCartResponse"
+      - "TaxCloud cart models: TaxCloudCalculateCartResponse, TaxCloudCalculateCartRequest"
+      - "CalculateCartResult interface for polymorphic return types"
+      - "Address parsing utility for TaxCloud request transformation"
+      - "Cart request validation (items, line items, currency, addresses)"
+      - "TaxabilityCode to TIC mapping with nil-safe defaults"
+      - "Auto-generated 0-based line item indices for TaxCloud"
   - version: "0.2.0-beta"
     date: "2026-02-16"
     changes:
