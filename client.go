@@ -509,6 +509,63 @@ func (c *Client) RefundOrder(ctx context.Context, orderID string, request *model
 	return response, nil
 }
 
+// CreateOrderFromCart creates an order from a previously calculated cart in TaxCloud.
+// The user must have previously called CalculateCart with TaxCloud credentials and stored
+// the returned cartId from the TaxCloudCartItemResponse.
+//
+// TaxCloud automatically commits the order at the time of creation, finalizing it for tax
+// filing. If you need to delay finalizing the order (for example, for fulfillment or payment
+// verification), omit the CompletedDate and update it later using UpdateOrder.
+//
+// This function requires TaxCloud credentials to be configured during client initialization.
+//
+// Example:
+//
+//	ctx := context.Background()
+//	req := &models.CreateOrderFromCartRequest{
+//		CartID:  "ce4a1234-5678-90ab-cdef-1234567890ab",
+//		OrderID: "my-order-1",
+//	}
+//	response, err := client.CreateOrderFromCart(ctx, req)
+//	if err != nil {
+//		return fmt.Errorf("failed to create order from cart: %w", err)
+//	}
+//	fmt.Printf("Order created with ID: %s\n", response.OrderID)
+func (c *Client) CreateOrderFromCart(ctx context.Context, request *models.CreateOrderFromCartRequest) (*models.OrderResponse, error) {
+	// Check if TaxCloud credentials are configured
+	if !c.config.HasTaxCloudCredentials() {
+		return nil, ErrTaxCloudNotConfigured
+	}
+
+	// Validate request
+	if err := validation.ValidateCreateOrderFromCartRequest(&validation.CreateOrderFromCartValidationInput{
+		CartID:  request.CartID,
+		OrderID: request.OrderID,
+	}); err != nil {
+		return nil, &ValidationError{
+			Field:   "CreateOrderFromCartRequest",
+			Value:   fmt.Sprintf("cartId=%q, orderId=%q", request.CartID, request.OrderID),
+			Message: err.Error(),
+		}
+	}
+
+	// Build the path with connection ID
+	path := fmt.Sprintf("/tax/connections/%s/carts/orders", c.config.TaxCloudConnectionID)
+
+	// Set up authentication headers
+	headers := map[string]string{
+		"X-API-Key": c.config.TaxCloudAPIKey,
+	}
+
+	// Make the POST request to TaxCloud API
+	var response models.OrderResponse
+	if err := c.httpClient.Post(ctx, c.config.TaxCloudBaseURL, path, headers, request, &response); err != nil {
+		return nil, wrapError("failed to create order from cart", err)
+	}
+
+	return &response, nil
+}
+
 // wrapError converts internal HTTP APIError to public APIError for proper errors.As support,
 // then wraps it with a descriptive message.
 func wrapError(msg string, err error) error {

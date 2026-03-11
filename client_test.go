@@ -1114,6 +1114,225 @@ func TestWrapError_WithNonAPIError(t *testing.T) {
 	assert.False(t, errors.As(err, &apiErr))
 }
 
+func TestCreateOrderFromCart_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/tax/connections/conn-123/carts/orders", r.URL.Path)
+		assert.Equal(t, "tc-api-key", r.Header.Get("X-API-Key"))
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{
+			"orderId": "my-order-1",
+			"customerId": "customer-456",
+			"connectionId": "conn-123",
+			"transactionDate": "2024-01-15T09:30:00Z",
+			"completedDate": "2024-01-15T09:30:00Z",
+			"origin": {
+				"line1": "200 Spectrum Center Drive",
+				"city": "Irvine",
+				"state": "CA",
+				"zip": "92618",
+				"countryCode": "US"
+			},
+			"destination": {
+				"line1": "323 Washington Ave N",
+				"city": "Minneapolis",
+				"state": "MN",
+				"zip": "55401-2427",
+				"countryCode": "US"
+			},
+			"lineItems": [
+				{
+					"index": 0,
+					"itemId": "item-1",
+					"price": 10.8,
+					"quantity": 1.5,
+					"tax": {"amount": 1.31, "rate": 0.0813},
+					"tic": 0
+				}
+			],
+			"currency": {"currencyCode": "USD"},
+			"deliveredBySeller": false,
+			"excludeFromFiling": false
+		}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(
+		"test-api-key",
+		WithTaxCloudConnectionID("conn-123"),
+		WithTaxCloudAPIKey("tc-api-key"),
+		WithTaxCloudBaseURL(server.URL),
+	)
+	require.NoError(t, err)
+
+	req := &models.CreateOrderFromCartRequest{
+		CartID:  "ce4a1234-5678-90ab-cdef-1234567890ab",
+		OrderID: "my-order-1",
+	}
+
+	response, err := client.CreateOrderFromCart(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, "my-order-1", response.OrderID)
+	assert.Equal(t, "customer-456", response.CustomerID)
+	assert.Equal(t, "conn-123", response.ConnectionID)
+	assert.Len(t, response.LineItems, 1)
+	assert.Equal(t, 1.31, response.LineItems[0].Tax.Amount)
+}
+
+func TestCreateOrderFromCart_WithCompletedDate(t *testing.T) {
+	completedDate := "2024-01-15T09:30:00Z"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/tax/connections/conn-123/carts/orders", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{
+			"orderId": "my-order-1",
+			"customerId": "customer-456",
+			"connectionId": "conn-123",
+			"transactionDate": "2024-01-15T09:30:00Z",
+			"completedDate": "2024-01-15T09:30:00Z",
+			"origin": {
+				"line1": "200 Spectrum Center Drive",
+				"city": "Irvine",
+				"state": "CA",
+				"zip": "92618",
+				"countryCode": "US"
+			},
+			"destination": {
+				"line1": "323 Washington Ave N",
+				"city": "Minneapolis",
+				"state": "MN",
+				"zip": "55401-2427",
+				"countryCode": "US"
+			},
+			"lineItems": [],
+			"currency": {"currencyCode": "USD"},
+			"deliveredBySeller": false,
+			"excludeFromFiling": false
+		}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(
+		"test-api-key",
+		WithTaxCloudConnectionID("conn-123"),
+		WithTaxCloudAPIKey("tc-api-key"),
+		WithTaxCloudBaseURL(server.URL),
+	)
+	require.NoError(t, err)
+
+	req := &models.CreateOrderFromCartRequest{
+		CartID:        "ce4a1234-5678-90ab-cdef-1234567890ab",
+		OrderID:       "my-order-1",
+		CompletedDate: &completedDate,
+	}
+
+	response, err := client.CreateOrderFromCart(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, "my-order-1", response.OrderID)
+	assert.Equal(t, "2024-01-15T09:30:00Z", response.CompletedDate)
+}
+
+func TestCreateOrderFromCart_NoCredentials(t *testing.T) {
+	client, err := NewClient("test-api-key")
+	require.NoError(t, err)
+
+	req := &models.CreateOrderFromCartRequest{
+		CartID:  "ce4a1234-5678-90ab-cdef-1234567890ab",
+		OrderID: "my-order-1",
+	}
+
+	_, err = client.CreateOrderFromCart(context.Background(), req)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrTaxCloudNotConfigured)
+}
+
+func TestCreateOrderFromCart_EmptyCartID(t *testing.T) {
+	client, err := NewClient(
+		"test-api-key",
+		WithTaxCloudConnectionID("conn-123"),
+		WithTaxCloudAPIKey("tc-api-key"),
+	)
+	require.NoError(t, err)
+
+	req := &models.CreateOrderFromCartRequest{
+		CartID:  "",
+		OrderID: "my-order-1",
+	}
+
+	_, err = client.CreateOrderFromCart(context.Background(), req)
+	require.Error(t, err)
+
+	var valErr *ValidationError
+	require.ErrorAs(t, err, &valErr)
+	assert.Equal(t, "CreateOrderFromCartRequest", valErr.Field)
+	assert.Contains(t, valErr.Message, "cartId is required")
+}
+
+func TestCreateOrderFromCart_EmptyOrderID(t *testing.T) {
+	client, err := NewClient(
+		"test-api-key",
+		WithTaxCloudConnectionID("conn-123"),
+		WithTaxCloudAPIKey("tc-api-key"),
+	)
+	require.NoError(t, err)
+
+	req := &models.CreateOrderFromCartRequest{
+		CartID:  "ce4a1234-5678-90ab-cdef-1234567890ab",
+		OrderID: "",
+	}
+
+	_, err = client.CreateOrderFromCart(context.Background(), req)
+	require.Error(t, err)
+
+	var valErr *ValidationError
+	require.ErrorAs(t, err, &valErr)
+	assert.Equal(t, "CreateOrderFromCartRequest", valErr.Field)
+	assert.Contains(t, valErr.Message, "orderId is required")
+}
+
+func TestCreateOrderFromCart_APIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{
+			"$schema": "https://api.v3.taxcloud.com/schemas/error",
+			"title": "Bad Request",
+			"status": 400,
+			"detail": "cart has already been converted to an order"
+		}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(
+		"test-api-key",
+		WithTaxCloudConnectionID("conn-123"),
+		WithTaxCloudAPIKey("tc-api-key"),
+		WithTaxCloudBaseURL(server.URL),
+	)
+	require.NoError(t, err)
+
+	req := &models.CreateOrderFromCartRequest{
+		CartID:  "ce4a1234-5678-90ab-cdef-1234567890ab",
+		OrderID: "my-order-1",
+	}
+
+	_, err = client.CreateOrderFromCart(context.Background(), req)
+	require.Error(t, err)
+
+	var apiErr *APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, 400, apiErr.StatusCode)
+	assert.Equal(t, "Bad Request", apiErr.Name)
+	assert.Equal(t, "cart has already been converted to an order", apiErr.Message)
+}
+
 func TestWithTaxCloudBaseURL(t *testing.T) {
 	client, err := NewClient(
 		"test-api-key",

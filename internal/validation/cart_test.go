@@ -176,3 +176,51 @@ func TestValidateCalculateCartRequest(t *testing.T) {
 		assert.Contains(t, err.Error(), "lineItems[1].itemId is required")
 	})
 }
+
+func TestValidateCreateOrderFromCartRequest(t *testing.T) {
+	t.Run("valid request", func(t *testing.T) {
+		input := &CreateOrderFromCartValidationInput{
+			CartID:  "ce4a1234-5678-90ab-cdef-1234567890ab",
+			OrderID: "my-order-1",
+		}
+		err := ValidateCreateOrderFromCartRequest(input)
+		require.NoError(t, err)
+	})
+
+	t.Run("nil input", func(t *testing.T) {
+		err := ValidateCreateOrderFromCartRequest(nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "cannot be nil")
+	})
+
+	t.Run("empty cartId", func(t *testing.T) {
+		input := &CreateOrderFromCartValidationInput{
+			CartID:  "",
+			OrderID: "my-order-1",
+		}
+		err := ValidateCreateOrderFromCartRequest(input)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "cartId is required")
+	})
+
+	t.Run("empty orderId", func(t *testing.T) {
+		input := &CreateOrderFromCartValidationInput{
+			CartID:  "ce4a1234-5678-90ab-cdef-1234567890ab",
+			OrderID: "",
+		}
+		err := ValidateCreateOrderFromCartRequest(input)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "orderId is required")
+	})
+
+	t.Run("both fields empty", func(t *testing.T) {
+		input := &CreateOrderFromCartValidationInput{
+			CartID:  "",
+			OrderID: "",
+		}
+		err := ValidateCreateOrderFromCartRequest(input)
+		require.Error(t, err)
+		// Should fail on cartId first
+		assert.Contains(t, err.Error(), "cartId is required")
+	})
+}

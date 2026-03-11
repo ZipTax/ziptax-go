@@ -76,3 +76,27 @@ func ValidateCalculateCartRequest(input *CartValidationInput) error {
 
 	return nil
 }
+
+// CreateOrderFromCartValidationInput holds the fields needed to validate a CreateOrderFromCart request.
+// This avoids importing the models package into the validation package.
+type CreateOrderFromCartValidationInput struct {
+	CartID  string
+	OrderID string
+}
+
+// ValidateCreateOrderFromCartRequest validates the input for a CreateOrderFromCart request.
+func ValidateCreateOrderFromCartRequest(input *CreateOrderFromCartValidationInput) error {
+	if input == nil {
+		return fmt.Errorf("validation input cannot be nil")
+	}
+
+	if input.CartID == "" {
+		return fmt.Errorf("cartId is required")
+	}
+
+	if input.OrderID == "" {
+		return fmt.Errorf("orderId is required")
+	}
+
+	return nil
+}

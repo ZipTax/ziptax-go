@@ -408,6 +408,12 @@ When extending this SDK with AI assistance:
 
 See [CHANGELOG.md](./CHANGELOG.md) for detailed release notes.
 
+### v0.2.2-beta (Create Order from Cart)
+- CreateOrderFromCart for converting TaxCloud carts into finalized orders
+- CreateOrderFromCartRequest model with cartId, orderId, optional completedDate
+- Cart-to-order validation (cartId and orderId required)
+- Comprehensive test coverage (92.3%)
+
 ### v0.2.1-beta (Cart Tax Calculation)
 - CalculateCart with dual API routing (ZipTax default, TaxCloud when configured)
 - Cart tax calculation models: request, response, line items, tax details
