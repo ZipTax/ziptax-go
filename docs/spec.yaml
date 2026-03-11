@@ -1816,7 +1816,6 @@ models:
         example: "ce4a1234-5678-90ab-cdef-1234567890ab"
         validation:
           min_length: 1
-          max_length: 50
       - name: "orderId"
         type: "string"
         required: true

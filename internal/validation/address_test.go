@@ -149,7 +149,7 @@ func TestParseAddress(t *testing.T) {
 	t.Run("state zip without zip code", func(t *testing.T) {
 		_, err := ParseAddress("200 Spectrum Center Dr, Irvine, CA")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "must contain both state and zip")
+		assert.Contains(t, err.Error(), "last segment must contain exactly state and zip code")
 	})
 
 	t.Run("invalid state length", func(t *testing.T) {
@@ -168,5 +168,17 @@ func TestParseAddress(t *testing.T) {
 		_, err := ParseAddress("200 Spectrum Center Dr, Irvine, CA 9261A")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid zip code")
+	})
+
+	t.Run("extra fields in state zip segment", func(t *testing.T) {
+		_, err := ParseAddress("200 Spectrum Center Dr, Irvine, CA 92618 USA")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "last segment must contain exactly state and zip code")
+	})
+
+	t.Run("extra fields in state zip segment with split zip", func(t *testing.T) {
+		_, err := ParseAddress("323 Washington Ave N, Minneapolis, MN 55401 2427")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "last segment must contain exactly state and zip code")
 	})
 }
