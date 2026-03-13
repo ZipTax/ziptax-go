@@ -199,6 +199,29 @@ type Exemption struct {
 	IsExempt *bool `json:"isExempt,omitempty"`
 }
 
+// CreateOrderFromCartRequest represents the request payload for creating an order from a
+// previously calculated cart in TaxCloud. The user must have previously called CalculateCart
+// with TaxCloud credentials and stored the returned cartId from the TaxCloudCartItemResponse.
+//
+// The TaxCloud /carts/orders endpoint only accepts cartId and orderId. To set a completed
+// date on the order, use UpdateOrder after creation.
+//
+// Example:
+//
+//	req := &models.CreateOrderFromCartRequest{
+//		CartID:  "ce4a1234-5678-90ab-cdef-1234567890ab",
+//		OrderID: "my-order-1",
+//	}
+type CreateOrderFromCartRequest struct {
+	// CartID is the cart ID from a previous TaxCloud CalculateCart response (required).
+	// Identifies the cart to convert into an order.
+	CartID string `json:"cartId"`
+
+	// OrderID is the user's internal order ID for cross-referencing (required).
+	// Must be unique per connection to ensure accurate tax reporting.
+	OrderID string `json:"orderId"`
+}
+
 // UpdateOrderRequest represents the request payload for updating an order in TaxCloud.
 // Currently only the completedDate can be updated.
 type UpdateOrderRequest struct {

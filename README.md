@@ -17,6 +17,7 @@ Official Go SDK for the [ZipTax API](https://zip.tax/) - get accurate sales and 
 - 🔐 Secure API key authentication
 - 🌐 Support for US and Canadian addresses
 - 📍 Geolocation-based lookups
+- 🛒 **Cart Tax Calculation** - Calculate sales tax on shopping carts (ZipTax or TaxCloud)
 - 📦 **TaxCloud Order Management** - Create, retrieve, update, and refund orders
 
 ## Installation
@@ -140,6 +141,69 @@ metrics, err := client.GetAccountMetrics(ctx)
 fmt.Printf("Core Usage: %.2f%%\n", metrics.CoreUsagePercent)
 fmt.Printf("Geo Usage: %.2f%%\n", metrics.GeoUsagePercent)
 ```
+
+## Cart Tax Calculation
+
+Calculate sales tax on a shopping cart. The SDK routes the request automatically based on your client configuration:
+
+- **Without TaxCloud credentials**: Routes to the ZipTax `/calculate/cart` API
+- **With TaxCloud credentials**: Routes to the TaxCloud `/tax/connections/{connectionId}/carts` API
+
+```go
+cartReq := &models.CalculateCartRequest{
+    Items: []models.CartItem{
+        {
+            CustomerID: "customer-453",
+            Currency:   models.CartCurrency{CurrencyCode: "USD"},
+            Destination: models.CartAddress{
+                Address: "200 Spectrum Center Dr, Irvine, CA 92618",
+            },
+            Origin: models.CartAddress{
+                Address: "323 Washington Ave N, Minneapolis, MN 55401-2427",
+            },
+            LineItems: []models.CartLineItem{
+                {
+                    ItemID:   "item-1",
+                    Price:    10.75,
+                    Quantity: 1.5,
+                },
+            },
+        },
+    },
+}
+
+result, err := client.CalculateCart(ctx, cartReq)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Use a type switch to handle the polymorphic response
+switch r := result.(type) {
+case *models.CalculateCartResponse:
+    fmt.Printf("ZipTax cart total tax: %.2f\n", r.Items[0].LineItems[0].Tax.Amount)
+case *models.TaxCloudCalculateCartResponse:
+    fmt.Printf("TaxCloud cart ID: %s\n", r.Items[0].CartID)
+}
+```
+
+### Create Order from Cart
+
+After calculating a cart with TaxCloud credentials, convert it into a finalized order. This requires the `cartId` returned from a previous `CalculateCart` call:
+
+```go
+req := &models.CreateOrderFromCartRequest{
+    CartID:  "ce4a1234-5678-90ab-cdef-1234567890ab", // from CalculateCart response
+    OrderID: "my-order-1",                            // your internal order ID
+}
+
+order, err := client.CreateOrderFromCart(ctx, req)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Order created: %s\n", order.OrderID)
+```
+
+To set a completed date on the order, use `UpdateOrder` after creation.
 
 ## TaxCloud Order Management
 

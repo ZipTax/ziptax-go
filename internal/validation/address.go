@@ -62,11 +62,11 @@ func ParseAddress(address string) (*ParsedAddress, error) {
 		return nil, fmt.Errorf("state and zip (last segment) cannot be empty in %q", address)
 	}
 
-	// Split the last segment by whitespace to get state and zip
+	// Split the last segment by whitespace to get state and zip (exactly 2 fields)
 	stateZipParts := strings.Fields(stateZip)
-	if len(stateZipParts) < 2 {
+	if len(stateZipParts) != 2 {
 		return nil, fmt.Errorf(
-			"last segment must contain both state and zip code separated by space (e.g., 'CA 92618'): got %q in %q",
+			"last segment must contain exactly state and zip code separated by space (e.g., 'CA 92618'): got %q in %q",
 			stateZip, address,
 		)
 	}

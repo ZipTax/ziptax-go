@@ -9,7 +9,7 @@
 project:
   name: "ziptax-go"
   language: "go"
-  version: "0.2.1-beta"
+  version: "0.2.2-beta"
   description: "Official Go SDK for the ZipTax and TaxCloud APIs"
   module_path: "github.com/ziptax/ziptax-go"
   minimum_go_version: "1.21"
@@ -317,12 +317,18 @@ resources:
                   to: "TaxCloudAddress (structured: line1, city, state, zip, countryCode)"
                   note: |
                     Parse the single address string into structured components.
-                    Use a simple parsing strategy:
-                      - Split the address string by comma
-                      - line1 = first segment (street address)
-                      - city = second segment
-                      - Parse last segment for state and zip (e.g., "CA 92618" or "CA 92618-1905")
+                    Uses an edges-inward parsing strategy:
+                      - Split the address string by comma (minimum 3 segments required)
+                      - First segment: street address (Line1)
+                      - Last segment: state and zip code (e.g., "CA 92618" or "MN 55401-2427")
+                      - Second-to-last segment: city
+                      - Any middle segments between first and second-to-last: joined into Line2 (supports suites, units, etc.)
                       - countryCode defaults to "US"
+                    Examples:
+                      "200 Spectrum Center Dr, Irvine, CA 92618"
+                        -> Line1: "200 Spectrum Center Dr", City: "Irvine"
+                      "200 Spectrum Center Dr, Suite 100, Irvine, CA 92618"
+                        -> Line1: "200 Spectrum Center Dr", Line2: "Suite 100", City: "Irvine"
                     If parsing fails, return a ValidationError with a
                     descriptive message advising the user to provide a properly
                     formatted address string.
@@ -551,6 +557,70 @@ resources:
           header: "X-API-KEY"
           format: "{taxCloudAPIKey}"
           note: "Uses TaxCloud API Key configured during client initialization"
+
+      # TaxCloud API Cart-to-Order Endpoint
+      - name: "CreateOrderFromCart"
+        api: "taxcloud"  # Indicates this uses the TaxCloud API
+        http_method: "POST"
+        path: "/tax/connections/{connectionId}/carts/orders"
+        description: |
+          Create an order from a previously calculated cart in TaxCloud. This
+          converts an existing cart (created via CalculateCart with TaxCloud
+          credentials) into a finalized order for tax filing. The user must
+          have previously called CalculateCart with TaxCloud credentials and
+          stored the returned cartId from that response.
+
+          TaxCloud automatically commits the order at the time of creation,
+          finalizing it for tax filing. To set a completed date on the order,
+          use UpdateOrder after creation.
+
+          The transactionDate is automatically set by TaxCloud to the moment
+          the endpoint is called.
+
+          Requires TaxCloud Connection ID and API Key configured during client
+          initialization.
+        operation_id: "createOrderFromCart"
+        requires_taxcloud: true  # This endpoint requires TaxCloud credentials
+        parameters:
+          - name: "connectionId"
+            type: "string"
+            format: "uuid"
+            required: true
+            location: "path"
+            description: "TaxCloud Connection ID (automatically populated from client configuration)"
+            example: "25eb9b97-5acb-492d-b720-c03e79cf715a"
+        request_body:
+          type: "CreateOrderFromCartRequest"
+          description: "Cart-to-order conversion details including the cartId from a previous CalculateCart response and the user's internal orderId"
+        returns:
+          type: "OrderResponse"
+          is_array: false
+          status_code: 201
+        authentication:
+          type: "header"
+          header: "X-API-KEY"
+          format: "{taxCloudAPIKey}"
+          note: "Uses TaxCloud API Key configured during client initialization"
+        validation:
+          request:
+            - "cartId is required (non-empty string)"
+            - "orderId is required (non-empty string)"
+        errors:
+          400:
+            - "Invalid request format"
+            - "Missing required fields (cartId)"
+            - "Invalid cartId (cart not found or already converted)"
+          401:
+            - "Missing X-API-KEY header"
+            - "Invalid or inactive API key"
+          403:
+            - "Forbidden"
+          422:
+            - "Unprocessable Entity (e.g., cart already converted to order)"
+          429:
+            - "Too Many Requests"
+          500:
+            - "Internal server error"
 
 # -----------------------------------------------------------------------------
 # Data Models
@@ -1727,6 +1797,34 @@ models:
         example: "2024-01-16T10:00:00Z"
 
   # ---------------------------------------------------------------------------
+  # TaxCloud API Models - Cart-to-Order
+  # ---------------------------------------------------------------------------
+  - name: "CreateOrderFromCartRequest"
+    description: |
+      Request payload for creating an order from a previously calculated cart
+      in TaxCloud. The user must have previously called CalculateCart with
+      TaxCloud credentials and stored the returned cartId from the
+      TaxCloudCartItemResponse. The orderId represents the user's internal
+      order identifier for cross-referencing. To set a completed date on
+      the order, use UpdateOrder after creation.
+    api: "taxcloud"
+    properties:
+      - name: "cartId"
+        type: "string"
+        required: true
+        description: "Cart ID from a previous TaxCloud CalculateCart response (TaxCloudCartItemResponse.CartId). Identifies the cart to convert into an order."
+        example: "ce4a1234-5678-90ab-cdef-1234567890ab"
+        validation:
+          min_length: 1
+      - name: "orderId"
+        type: "string"
+        required: true
+        description: "User's internal order ID for cross-referencing. Must be unique per connection to ensure accurate tax reporting and prevent duplicate transactions."
+        example: "my-order-1"
+        validation:
+          min_length: 1
+
+  # ---------------------------------------------------------------------------
   # TaxCloud API Models - Refunds
   # ---------------------------------------------------------------------------
   - name: "RefundTransactionRequest"
@@ -2854,6 +2952,14 @@ quality_requirements:
 # Version History
 # -----------------------------------------------------------------------------
 version_history:
+  - version: "0.2.2-beta"
+    date: "2026-03-11"
+    changes:
+      - "CreateOrderFromCart: create orders from previously calculated TaxCloud carts"
+      - "CreateOrderFromCartRequest model with cartId and orderId"
+      - "Cart-to-order validation (cartId and orderId required)"
+      - "POST /tax/connections/{connectionId}/carts/orders endpoint support"
+      - "Reuses existing OrderResponse for consistent return types"
   - version: "0.2.1-beta"
     date: "2026-02-27"
     changes:
