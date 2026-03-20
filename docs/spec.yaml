@@ -9,7 +9,7 @@
 project:
   name: "ziptax-go"
   language: "go"
-  version: "0.2.2-beta"
+  version: "0.2.3-beta"
   description: "Official Go SDK for the ZipTax and TaxCloud APIs"
   module_path: "github.com/ziptax/ziptax-go"
   minimum_go_version: "1.21"
@@ -617,6 +617,194 @@ resources:
             - "Forbidden"
           422:
             - "Unprocessable Entity (e.g., cart already converted to order)"
+          429:
+            - "Too Many Requests"
+          500:
+            - "Internal server error"
+
+      # -----------------------------------------------------------------------
+      # Product Code (TIC) Search Endpoints
+      # -----------------------------------------------------------------------
+      # These endpoints search for Taxability Information Codes (TICs) using
+      # natural language product descriptions. Both use the ZipTax API (not
+      # TaxCloud) and require only a ZipTax API key.
+      # -----------------------------------------------------------------------
+
+      - name: "SearchProductCodes"
+        api: "ziptax"
+        http_method: "POST"
+        path: "/search/tic"
+        description: |
+          Search for product codes (TICs) by natural language description.
+          Returns all matching Taxability Information Codes ranked and scored
+          by relevance.
+
+          Use the returned ticId as the taxabilityCode parameter in rate
+          requests or cart line items. For v60 rate requests, pass ticId as
+          a string. For cart line items, convert to int64.
+        operation_id: "searchProductCodes"
+        requires_taxcloud: false
+        parameters: []
+        request_body:
+          type: "ProductCodeSearchRequest"
+          content_type: "application/json"
+          description: "Search query for product codes"
+          schema:
+            properties:
+              - name: "query"
+                type: "string"
+                required: true
+                description: "Natural language product description (e.g., 'baked goods sold in plastic packaging')"
+                validation:
+                  min_length: 1
+                  note: "Must be non-empty after trimming whitespace"
+        returns:
+          type: "ProductCodeSearchResponse"
+          is_array: false
+          status_code: 200
+          description: "Ranked search results with TIC codes, descriptions, and scores"
+          schema:
+            properties:
+              - name: "query"
+                type: "string"
+                description: "The original search query"
+              - name: "results"
+                type: "array"
+                items_type: "ProductCodeSearchResult"
+                description: "Array of matching product codes ranked by relevance"
+                item_properties:
+                  - name: "ticId"
+                    type: "string"
+                    description: "Taxability Information Code"
+                    example: "41030"
+                  - name: "label"
+                    type: "string"
+                    description: "TIC label from the TIC data"
+                    example: "Bakery Items"
+                  - name: "naturalLabel"
+                    type: "string"
+                    description: "Natural language label aligned with the description"
+                    example: "Bakery Items"
+                  - name: "description"
+                    type: "string"
+                    description: "Full description of the taxabilityCode line item"
+                    example: "Bakery items sold without eating utensils provided by the seller"
+                  - name: "documentation"
+                    type: "string"
+                    description: "Long-form documentation of the TIC code"
+                    example: "Bakery items sold without eating utensils provided by the seller, not sold as a prepared food"
+                  - name: "rank"
+                    type: "string"
+                    description: "Itemized rank for the result (1 = best match)"
+                    example: "1"
+                  - name: "score"
+                    type: "string"
+                    description: "Confidence score (0.0-1.0), independent of rank"
+                    example: "0.891025641025641"
+        authentication:
+          type: "header"
+          header: "X-API-Key"
+          format: "{apiKey}"
+          note: "Uses ZipTax API Key (no TaxCloud credentials needed)"
+        validation:
+          request:
+            - "query is required (non-empty string after trimming whitespace)"
+        errors:
+          400:
+            - "Invalid request format"
+            - "Missing or empty query"
+          401:
+            - "Missing X-API-KEY header"
+            - "Invalid or inactive API key"
+          429:
+            - "Too Many Requests"
+          500:
+            - "Internal server error"
+
+      - name: "RecommendProductCode"
+        api: "ziptax"
+        http_method: "POST"
+        path: "/search/tic/recommend"
+        description: |
+          Get an AI-powered product code (TIC) recommendation. Returns a
+          single best-match TIC code with higher accuracy than the standard
+          search. Has slightly higher latency than SearchProductCodes due
+          to the AI processing step.
+
+          Use the returned ticId as the taxabilityCode parameter in rate
+          requests or cart line items. For v60 rate requests, pass ticId as
+          a string. For cart line items, convert to int64.
+        operation_id: "recommendProductCode"
+        requires_taxcloud: false
+        parameters: []
+        request_body:
+          type: "ProductCodeSearchRequest"
+          content_type: "application/json"
+          description: "Search query for AI-powered product code recommendation"
+          schema:
+            properties:
+              - name: "query"
+                type: "string"
+                required: true
+                description: "Natural language product description (e.g., 'baked goods sold in plastic packaging')"
+                validation:
+                  min_length: 1
+                  note: "Must be non-empty after trimming whitespace"
+        returns:
+          type: "ProductCodeRecommendationResponse"
+          is_array: false
+          status_code: 200
+          description: "AI-powered product code recommendation"
+          schema:
+            properties:
+              - name: "predictions"
+                type: "array"
+                items_type: "ProductCodeRecommendation"
+                description: "Array of AI-powered product code recommendations (typically one)"
+                item_properties:
+                  - name: "status"
+                    type: "string"
+                    description: "Status of the prediction result"
+                    enum: ["success", "fail"]
+                  - name: "error"
+                    type: "string"
+                    required: false
+                    description: "Non-null error message when the prediction fails"
+                  - name: "ticId"
+                    type: "string"
+                    description: "Recommended Taxability Information Code"
+                    example: "41030"
+                  - name: "label"
+                    type: "string"
+                    description: "TIC label from the TIC data"
+                    example: "Bakery Items"
+                  - name: "naturalLabel"
+                    type: "string"
+                    description: "Natural language label aligned with the description"
+                    example: "Bakery Items"
+                  - name: "tic_description"
+                    type: "string"
+                    description: "Full description of the recommended TIC code"
+                    example: "Bakery items sold without eating utensils provided by the seller"
+                  - name: "product_description"
+                    type: "string"
+                    description: "Original product description from the query"
+                    example: "baked goods sold in plastic packaging"
+        authentication:
+          type: "header"
+          header: "X-API-Key"
+          format: "{apiKey}"
+          note: "Uses ZipTax API Key (no TaxCloud credentials needed)"
+        validation:
+          request:
+            - "query is required (non-empty string after trimming whitespace)"
+        errors:
+          400:
+            - "Invalid request format"
+            - "Missing or empty query"
+          401:
+            - "Missing X-API-KEY header"
+            - "Invalid or inactive API key"
           429:
             - "Too Many Requests"
           500:
@@ -1927,6 +2115,136 @@ models:
         description: "Tax amount refunded for the item"
         example: 1.31
 
+  # ---------------------------------------------------------------------------
+  # Product Code (TIC) Search Models
+  # ---------------------------------------------------------------------------
+
+  - name: "ProductCodeSearchRequest"
+    description: "Request payload for product code search and recommendation endpoints"
+    properties:
+      - name: "query"
+        type: "string"
+        required: true
+        api_field: "query"
+        description: "Natural language product description to search for matching TIC codes"
+        example: "baked goods sold in plastic packaging"
+
+  - name: "ProductCodeSearchResult"
+    description: "A single product code search result with TIC code, description, rank, and score"
+    properties:
+      - name: "ticId"
+        type: "string"
+        required: true
+        api_field: "ticId"
+        description: "Taxability Information Code"
+        example: "41030"
+      - name: "label"
+        type: "string"
+        required: true
+        api_field: "label"
+        description: "TIC label from the TIC data"
+        example: "Bakery Items"
+      - name: "naturalLabel"
+        type: "string"
+        required: true
+        api_field: "naturalLabel"
+        description: "Natural language label aligned with the full description"
+        example: "Bakery Items"
+      - name: "description"
+        type: "string"
+        required: true
+        api_field: "description"
+        description: "Full description of the taxabilityCode line item"
+        example: "Bakery items sold without eating utensils provided by the seller"
+      - name: "documentation"
+        type: "string"
+        required: true
+        api_field: "documentation"
+        description: "Long-form documentation of the TIC code"
+        example: "Bakery items sold without eating utensils provided by the seller, not sold as a prepared food"
+      - name: "rank"
+        type: "string"
+        required: true
+        api_field: "rank"
+        description: "Itemized rank for the result (1 = best match)"
+        example: "1"
+      - name: "score"
+        type: "string"
+        required: true
+        api_field: "score"
+        description: "Confidence score (0.0-1.0), independent of rank"
+        example: "0.891025641025641"
+
+  - name: "ProductCodeSearchResponse"
+    description: "Response from the product code search endpoint"
+    properties:
+      - name: "query"
+        type: "string"
+        required: true
+        api_field: "query"
+        description: "The original search query"
+      - name: "results"
+        type: "array"
+        items_type: "ProductCodeSearchResult"
+        required: true
+        api_field: "results"
+        description: "Array of matching product codes ranked by relevance"
+
+  - name: "ProductCodeRecommendation"
+    description: "A single AI-powered product code recommendation"
+    properties:
+      - name: "status"
+        type: "string"
+        required: true
+        api_field: "status"
+        description: "Status of the prediction result (success or fail)"
+        enum: ["success", "fail"]
+      - name: "error"
+        type: "string"
+        required: false
+        api_field: "error"
+        description: "Non-null error message when the prediction fails"
+      - name: "ticId"
+        type: "string"
+        required: true
+        api_field: "ticId"
+        description: "Recommended Taxability Information Code"
+        example: "41030"
+      - name: "label"
+        type: "string"
+        required: true
+        api_field: "label"
+        description: "TIC label from the TIC data"
+        example: "Bakery Items"
+      - name: "naturalLabel"
+        type: "string"
+        required: true
+        api_field: "naturalLabel"
+        description: "Natural language label aligned with the description"
+        example: "Bakery Items"
+      - name: "ticDescription"
+        type: "string"
+        required: true
+        api_field: "tic_description"
+        description: "Full description of the recommended TIC code"
+        example: "Bakery items sold without eating utensils provided by the seller"
+      - name: "productDescription"
+        type: "string"
+        required: true
+        api_field: "product_description"
+        description: "Original product description from the query"
+        example: "baked goods sold in plastic packaging"
+
+  - name: "ProductCodeRecommendationResponse"
+    description: "Response from the product code recommendation endpoint"
+    properties:
+      - name: "predictions"
+        type: "array"
+        items_type: "ProductCodeRecommendation"
+        required: true
+        api_field: "predictions"
+        description: "Array of AI-powered product code recommendations (typically one)"
+
 
 # -----------------------------------------------------------------------------
 # Dependencies
@@ -2952,6 +3270,16 @@ quality_requirements:
 # Version History
 # -----------------------------------------------------------------------------
 version_history:
+  - version: "0.2.3-beta"
+    date: "2026-03-20"
+    changes:
+      - "SearchProductCodes: search for TICs by natural language product description"
+      - "RecommendProductCode: AI-powered best-match TIC recommendation"
+      - "ProductCodeSearchRequest, ProductCodeSearchResponse, ProductCodeSearchResult models"
+      - "ProductCodeRecommendation, ProductCodeRecommendationResponse models"
+      - "ValidateProductQuery validation for non-empty query strings"
+      - "POST /search/tic and POST /search/tic/recommend endpoint support"
+      - "Product code search example in examples/product_code_search/"
   - version: "0.2.2-beta"
     date: "2026-03-11"
     changes:

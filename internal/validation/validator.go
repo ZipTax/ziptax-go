@@ -104,6 +104,14 @@ func ValidatePostalCode(postalCode string) error {
 	return nil
 }
 
+// ValidateProductQuery validates a product description query for TIC search endpoints.
+func ValidateProductQuery(query string) error {
+	if strings.TrimSpace(query) == "" {
+		return fmt.Errorf("product query cannot be empty")
+	}
+	return nil
+}
+
 // NormalizePostalCode trims whitespace and strips the 9-digit suffix from a postal code,
 // returning only the 5-digit base. The API only supports 5-digit postal codes.
 func NormalizePostalCode(postalCode string) string {

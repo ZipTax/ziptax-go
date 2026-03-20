@@ -17,6 +17,7 @@ Official Go SDK for the [ZipTax API](https://zip.tax/) - get accurate sales and 
 - 🔐 Secure API key authentication
 - 🌐 Support for US and Canadian addresses
 - 📍 Geolocation-based lookups
+- 🏷️ **Product Code (TIC) Search** - Search and AI-powered recommendation for Taxability Information Codes
 - 🛒 **Cart Tax Calculation** - Calculate sales tax on shopping carts (ZipTax or TaxCloud)
 - 📦 **TaxCloud Order Management** - Create, retrieve, update, and refund orders
 
@@ -140,6 +141,61 @@ for _, result := range response.Results {
 metrics, err := client.GetAccountMetrics(ctx)
 fmt.Printf("Core Usage: %.2f%%\n", metrics.CoreUsagePercent)
 fmt.Printf("Geo Usage: %.2f%%\n", metrics.GeoUsagePercent)
+```
+
+## Product Code Search (TIC)
+
+Search for Taxability Information Codes (TICs) using natural language product descriptions. No TaxCloud credentials required -- these endpoints use the ZipTax API.
+
+### Search Product Codes
+
+Returns all matching TICs ranked and scored by relevance:
+
+```go
+response, err := client.SearchProductCodes(ctx, "baked goods sold in plastic packaging")
+if err != nil {
+    log.Fatal(err)
+}
+
+for _, result := range response.Results {
+    fmt.Printf("TIC %s: %s (rank %s, score %s)\n",
+        result.TicID, result.Label, result.Rank, result.Score)
+}
+```
+
+### Recommend Product Code
+
+Get an AI-powered best-match recommendation (slightly higher latency):
+
+```go
+response, err := client.RecommendProductCode(ctx, "baked goods sold in plastic packaging")
+if err != nil {
+    log.Fatal(err)
+}
+
+prediction := response.Predictions[0]
+if prediction.Status == "success" {
+    fmt.Printf("Recommended TIC: %s (%s)\n", prediction.TicID, prediction.Label)
+    fmt.Printf("Description: %s\n", prediction.TicDescription)
+}
+```
+
+### Using TICs with Cart Line Items
+
+Use the returned `TicID` as the `TaxabilityCode` in cart line items:
+
+```go
+import "strconv"
+
+ticID := response.Results[0].TicID
+tic, _ := strconv.ParseInt(ticID, 10, 64)
+
+lineItem := models.CartLineItem{
+    ItemID:          "item-1",
+    Price:           10.00,
+    Quantity:        1,
+    TaxabilityCode:  &tic,
+}
 ```
 
 ## Cart Tax Calculation
@@ -433,6 +489,7 @@ wg.Wait()
 See the [examples](./examples) directory for complete examples:
 
 - [Basic Usage](./examples/basic_usage) - Simple API calls
+- [Product Code Search](./examples/product_code_search) - TIC search and AI recommendation
 - [Concurrent Usage](./examples/concurrent_usage) - Parallel requests with goroutines
 - [Error Handling](./examples/error_handling) - Proper error handling patterns
 - [Context Timeout](./examples/context_timeout) - Using context for timeouts and cancellation

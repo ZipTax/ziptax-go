@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3-beta] - 2026-03-20
+
+### Added
+- **Product Code Search (TIC)**: `SearchProductCodes` method for searching Taxability Information Codes by natural language description
+  - Posts to ZipTax `POST /search/tic`
+  - Returns ranked and scored results with TIC codes, labels, descriptions, and documentation
+  - Uses ZipTax API key only (no TaxCloud credentials required)
+- **Product Code Recommendation**: `RecommendProductCode` method for AI-powered TIC recommendation
+  - Posts to ZipTax `POST /search/tic/recommend`
+  - Returns a single best-match recommendation with higher accuracy
+  - Slightly higher latency than `SearchProductCodes` due to AI processing
+- Product code models in `models/product_codes.go`:
+  - `ProductCodeSearchRequest`, `ProductCodeSearchResponse`, `ProductCodeSearchResult`
+  - `ProductCodeRecommendation`, `ProductCodeRecommendationResponse`
+- `ValidateProductQuery()` validation helper for non-empty query strings
+- Product code search example in `examples/product_code_search/`
+
+### Changed
+- Test coverage improved from 92.3% to 93.0% on root package
+
 ## [0.2.2-beta] - 2026-03-11
 
 ### Added
