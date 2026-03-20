@@ -51,8 +51,10 @@ func main() {
 			fmt.Printf("Recommended TIC: %s (%s)\n", prediction.TicID, prediction.Label)
 			fmt.Printf("  TIC Description: %s\n", prediction.TicDescription)
 			fmt.Printf("  Product Description: %s\n", prediction.ProductDescription)
+		} else if prediction.Error != nil {
+			fmt.Printf("Recommendation failed: %s\n", *prediction.Error)
 		} else {
-			fmt.Printf("Recommendation failed: %v\n", prediction.Error)
+			fmt.Println("Recommendation failed with unknown error")
 		}
 	}
 

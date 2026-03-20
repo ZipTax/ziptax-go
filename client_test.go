@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -1468,6 +1469,20 @@ func TestClient_SearchProductCodes(t *testing.T) {
 		assert.Contains(t, validationErr.Message, "cannot be empty")
 	})
 
+	t.Run("query exceeds max length", func(t *testing.T) {
+		client, err := NewClient("test-api-key")
+		require.NoError(t, err)
+
+		longQuery := strings.Repeat("a", 501)
+		_, err = client.SearchProductCodes(context.Background(), longQuery)
+		require.Error(t, err)
+
+		var validationErr *ValidationError
+		require.ErrorAs(t, err, &validationErr)
+		assert.Equal(t, "query", validationErr.Field)
+		assert.Contains(t, validationErr.Message, "exceeds maximum length")
+	})
+
 	t.Run("API error response", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -1633,6 +1648,20 @@ func TestClient_RecommendProductCode(t *testing.T) {
 		var validationErr *ValidationError
 		require.ErrorAs(t, err, &validationErr)
 		assert.Equal(t, "query", validationErr.Field)
+	})
+
+	t.Run("query exceeds max length", func(t *testing.T) {
+		client, err := NewClient("test-api-key")
+		require.NoError(t, err)
+
+		longQuery := strings.Repeat("a", 501)
+		_, err = client.RecommendProductCode(context.Background(), longQuery)
+		require.Error(t, err)
+
+		var validationErr *ValidationError
+		require.ErrorAs(t, err, &validationErr)
+		assert.Equal(t, "query", validationErr.Field)
+		assert.Contains(t, validationErr.Message, "exceeds maximum length")
 	})
 
 	t.Run("API error response", func(t *testing.T) {

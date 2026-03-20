@@ -356,7 +356,12 @@ func (c *Client) SearchProductCodes(ctx context.Context, query string) (*models.
 		Query: query,
 	}
 
-	// Make the POST request to ZipTax API
+	// Make the POST request to ZipTax API.
+	// Note: Post() requires explicit baseURL and headers because it was designed
+	// for multi-API routing (ZipTax vs TaxCloud). Unlike Get(), which auto-sets
+	// X-API-Key from the HTTP client's stored key, Post() relies on the caller
+	// to provide headers. This is consistent with calculateCartZipTax and all
+	// other Post() call sites.
 	var response models.ProductCodeSearchResponse
 	if err := c.httpClient.Post(ctx, c.config.BaseURL, "/search/tic", map[string]string{
 		"X-API-Key": c.config.APIKey,
@@ -401,7 +406,7 @@ func (c *Client) RecommendProductCode(ctx context.Context, query string) (*model
 		Query: query,
 	}
 
-	// Make the POST request to ZipTax API
+	// Make the POST request to ZipTax API (see SearchProductCodes for Post() pattern notes).
 	var response models.ProductCodeRecommendationResponse
 	if err := c.httpClient.Post(ctx, c.config.BaseURL, "/search/tic/recommend", map[string]string{
 		"X-API-Key": c.config.APIKey,

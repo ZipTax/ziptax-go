@@ -78,9 +78,13 @@ type ProductCodeRecommendation struct {
 	NaturalLabel string `json:"naturalLabel"`
 
 	// TicDescription is the full description of the recommended TIC code.
+	// Note: JSON tag uses snake_case ("tic_description") to match the API response format,
+	// unlike sibling fields which use camelCase. This is intentional.
 	TicDescription string `json:"tic_description"`
 
 	// ProductDescription is the original product description from the query.
+	// Note: JSON tag uses snake_case ("product_description") to match the API response format,
+	// unlike sibling fields which use camelCase. This is intentional.
 	ProductDescription string `json:"product_description"`
 }
 
