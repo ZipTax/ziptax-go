@@ -107,7 +107,8 @@ func ValidatePostalCode(postalCode string) error {
 // ValidateProductQuery validates a product description query for TIC search endpoints.
 // The query must be a non-empty string of at most 500 characters.
 func ValidateProductQuery(query string) error {
-	if strings.TrimSpace(query) == "" {
+	query = strings.TrimSpace(query)
+	if query == "" {
 		return fmt.Errorf("product query cannot be empty")
 	}
 	if len(query) > 500 {

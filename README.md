@@ -185,10 +185,16 @@ if prediction.Status == "success" {
 Use the returned `TicID` as the `TaxabilityCode` in cart line items:
 
 ```go
-import "strconv"
+import (
+    "log"
+    "strconv"
+)
 
 ticID := response.Results[0].TicID
-tic, _ := strconv.ParseInt(ticID, 10, 64)
+tic, err := strconv.ParseInt(ticID, 10, 64)
+if err != nil {
+    log.Fatalf("failed to parse TIC ID %q: %v", ticID, err)
+}
 
 lineItem := models.CartLineItem{
     ItemID:          "item-1",

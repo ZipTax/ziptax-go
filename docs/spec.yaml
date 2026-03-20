@@ -657,7 +657,8 @@ resources:
                 description: "Natural language product description (e.g., 'baked goods sold in plastic packaging')"
                 validation:
                   min_length: 1
-                  note: "Must be non-empty after trimming whitespace"
+                  max_length: 500
+                  note: "Must be non-empty after trimming whitespace and no longer than 500 characters"
         returns:
           type: "ProductCodeSearchResponse"
           is_array: false
@@ -714,7 +715,7 @@ resources:
             - "Invalid request format"
             - "Missing or empty query"
           401:
-            - "Missing X-API-KEY header"
+            - "Missing X-API-Key header"
             - "Invalid or inactive API key"
           429:
             - "Too Many Requests"
@@ -749,7 +750,8 @@ resources:
                 description: "Natural language product description (e.g., 'baked goods sold in plastic packaging')"
                 validation:
                   min_length: 1
-                  note: "Must be non-empty after trimming whitespace"
+                  max_length: 500
+                  note: "Must be non-empty after trimming whitespace and no longer than 500 characters"
         returns:
           type: "ProductCodeRecommendationResponse"
           is_array: false
@@ -803,7 +805,7 @@ resources:
             - "Invalid request format"
             - "Missing or empty query"
           401:
-            - "Missing X-API-KEY header"
+            - "Missing X-API-Key header"
             - "Invalid or inactive API key"
           429:
             - "Too Many Requests"
