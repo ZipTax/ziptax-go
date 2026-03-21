@@ -2,9 +2,11 @@ package ziptax
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -1353,4 +1355,339 @@ func TestWithTaxCloudBaseURL(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "https://custom-taxcloud.example.com", client.config.TaxCloudBaseURL)
+}
+
+// =============================================================================
+// SearchProductCodes Tests
+// =============================================================================
+
+func TestClient_SearchProductCodes(t *testing.T) {
+	t.Run("successful search with multiple results", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, http.MethodPost, r.Method)
+			assert.Equal(t, "/search/tic", r.URL.Path)
+			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+			assert.Equal(t, "test-api-key", r.Header.Get("X-API-Key"))
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"query": "baked goods sold in plastic packaging",
+				"results": [
+					{
+						"ticId": "41030",
+						"label": "Bakery Items",
+						"naturalLabel": "Bakery Items",
+						"description": "Bakery items sold without eating utensils provided by the seller",
+						"documentation": "Bakery items sold without eating utensils provided by the seller, not sold as a prepared food",
+						"rank": "1",
+						"score": "0.891025641025641"
+					},
+					{
+						"ticId": "40030",
+						"label": "Food and Food Ingredients",
+						"naturalLabel": "Food and Food Ingredients",
+						"description": "Food and food ingredients for human consumption",
+						"documentation": "Food and food ingredients for human consumption that are not candy, dietary supplements, or soft drinks",
+						"rank": "2",
+						"score": "0.750512820512821"
+					}
+				]
+			}`))
+		}))
+		defer server.Close()
+
+		client, err := NewClient("test-api-key", WithBaseURL(server.URL))
+		require.NoError(t, err)
+
+		response, err := client.SearchProductCodes(context.Background(), "baked goods sold in plastic packaging")
+		require.NoError(t, err)
+		assert.NotNil(t, response)
+		assert.Equal(t, "baked goods sold in plastic packaging", response.Query)
+		require.Len(t, response.Results, 2)
+
+		// First result
+		assert.Equal(t, "41030", response.Results[0].TicID)
+		assert.Equal(t, "Bakery Items", response.Results[0].Label)
+		assert.Equal(t, "Bakery Items", response.Results[0].NaturalLabel)
+		assert.Equal(t, "Bakery items sold without eating utensils provided by the seller", response.Results[0].Description)
+		assert.Contains(t, response.Results[0].Documentation, "not sold as a prepared food")
+		assert.Equal(t, "1", response.Results[0].Rank)
+		assert.Equal(t, "0.891025641025641", response.Results[0].Score)
+
+		// Second result
+		assert.Equal(t, "40030", response.Results[1].TicID)
+		assert.Equal(t, "Food and Food Ingredients", response.Results[1].Label)
+		assert.Equal(t, "2", response.Results[1].Rank)
+	})
+
+	t.Run("request body contains query", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var body models.ProductCodeSearchRequest
+			err := json.NewDecoder(r.Body).Decode(&body)
+			require.NoError(t, err)
+			assert.Equal(t, "electronics accessories", body.Query)
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"query": "electronics accessories", "results": []}`))
+		}))
+		defer server.Close()
+
+		client, err := NewClient("test-api-key", WithBaseURL(server.URL))
+		require.NoError(t, err)
+
+		response, err := client.SearchProductCodes(context.Background(), "electronics accessories")
+		require.NoError(t, err)
+		assert.Equal(t, "electronics accessories", response.Query)
+		assert.Empty(t, response.Results)
+	})
+
+	t.Run("empty query validation", func(t *testing.T) {
+		client, err := NewClient("test-api-key")
+		require.NoError(t, err)
+
+		_, err = client.SearchProductCodes(context.Background(), "")
+		require.Error(t, err)
+
+		var validationErr *ValidationError
+		require.ErrorAs(t, err, &validationErr)
+		assert.Equal(t, "query", validationErr.Field)
+		assert.Contains(t, validationErr.Message, "cannot be empty")
+	})
+
+	t.Run("whitespace-only query validation", func(t *testing.T) {
+		client, err := NewClient("test-api-key")
+		require.NoError(t, err)
+
+		_, err = client.SearchProductCodes(context.Background(), "   ")
+		require.Error(t, err)
+
+		var validationErr *ValidationError
+		require.ErrorAs(t, err, &validationErr)
+		assert.Equal(t, "query", validationErr.Field)
+		assert.Contains(t, validationErr.Message, "cannot be empty")
+	})
+
+	t.Run("query exceeds max length", func(t *testing.T) {
+		client, err := NewClient("test-api-key")
+		require.NoError(t, err)
+
+		longQuery := strings.Repeat("a", 501)
+		_, err = client.SearchProductCodes(context.Background(), longQuery)
+		require.Error(t, err)
+
+		var validationErr *ValidationError
+		require.ErrorAs(t, err, &validationErr)
+		assert.Equal(t, "query", validationErr.Field)
+		assert.Contains(t, validationErr.Message, "exceeds maximum length")
+	})
+
+	t.Run("API error response", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{
+				"metadata": {
+					"response": {
+						"code": 401,
+						"name": "UNAUTHORIZED",
+						"message": "Invalid API key"
+					}
+				}
+			}`))
+		}))
+		defer server.Close()
+
+		client, err := NewClient("bad-api-key", WithBaseURL(server.URL))
+		require.NoError(t, err)
+
+		_, err = client.SearchProductCodes(context.Background(), "test query")
+		require.Error(t, err)
+
+		var apiErr *APIError
+		require.ErrorAs(t, err, &apiErr)
+		assert.Equal(t, 401, apiErr.StatusCode)
+	})
+}
+
+// =============================================================================
+// RecommendProductCode Tests
+// =============================================================================
+
+func TestClient_RecommendProductCode(t *testing.T) {
+	t.Run("successful recommendation", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, http.MethodPost, r.Method)
+			assert.Equal(t, "/search/tic/recommend", r.URL.Path)
+			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+			assert.Equal(t, "test-api-key", r.Header.Get("X-API-Key"))
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"predictions": [
+					{
+						"status": "success",
+						"error": null,
+						"ticId": "41030",
+						"label": "Bakery Items",
+						"naturalLabel": "Bakery Items",
+						"tic_description": "Bakery items sold without eating utensils provided by the seller",
+						"product_description": "baked goods sold in plastic packaging"
+					}
+				]
+			}`))
+		}))
+		defer server.Close()
+
+		client, err := NewClient("test-api-key", WithBaseURL(server.URL))
+		require.NoError(t, err)
+
+		response, err := client.RecommendProductCode(context.Background(), "baked goods sold in plastic packaging")
+		require.NoError(t, err)
+		assert.NotNil(t, response)
+		require.Len(t, response.Predictions, 1)
+
+		prediction := response.Predictions[0]
+		assert.Equal(t, "success", prediction.Status)
+		assert.Nil(t, prediction.Error)
+		assert.Equal(t, "41030", prediction.TicID)
+		assert.Equal(t, "Bakery Items", prediction.Label)
+		assert.Equal(t, "Bakery Items", prediction.NaturalLabel)
+		assert.Equal(t, "Bakery items sold without eating utensils provided by the seller", prediction.TicDescription)
+		assert.Equal(t, "baked goods sold in plastic packaging", prediction.ProductDescription)
+	})
+
+	t.Run("request body contains query", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var body models.ProductCodeSearchRequest
+			err := json.NewDecoder(r.Body).Decode(&body)
+			require.NoError(t, err)
+			assert.Equal(t, "organic coffee beans", body.Query)
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"predictions": [
+					{
+						"status": "success",
+						"error": null,
+						"ticId": "40030",
+						"label": "Food and Food Ingredients",
+						"naturalLabel": "Food and Food Ingredients",
+						"tic_description": "Food and food ingredients for human consumption",
+						"product_description": "organic coffee beans"
+					}
+				]
+			}`))
+		}))
+		defer server.Close()
+
+		client, err := NewClient("test-api-key", WithBaseURL(server.URL))
+		require.NoError(t, err)
+
+		response, err := client.RecommendProductCode(context.Background(), "organic coffee beans")
+		require.NoError(t, err)
+		assert.Equal(t, "organic coffee beans", response.Predictions[0].ProductDescription)
+	})
+
+	t.Run("prediction with error status", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"predictions": [
+					{
+						"status": "fail",
+						"error": "Unable to determine product code",
+						"ticId": "",
+						"label": "",
+						"naturalLabel": "",
+						"tic_description": "",
+						"product_description": "asdfghjkl"
+					}
+				]
+			}`))
+		}))
+		defer server.Close()
+
+		client, err := NewClient("test-api-key", WithBaseURL(server.URL))
+		require.NoError(t, err)
+
+		response, err := client.RecommendProductCode(context.Background(), "asdfghjkl")
+		require.NoError(t, err)
+		require.Len(t, response.Predictions, 1)
+
+		prediction := response.Predictions[0]
+		assert.Equal(t, "fail", prediction.Status)
+		require.NotNil(t, prediction.Error)
+		assert.Equal(t, "Unable to determine product code", *prediction.Error)
+	})
+
+	t.Run("empty query validation", func(t *testing.T) {
+		client, err := NewClient("test-api-key")
+		require.NoError(t, err)
+
+		_, err = client.RecommendProductCode(context.Background(), "")
+		require.Error(t, err)
+
+		var validationErr *ValidationError
+		require.ErrorAs(t, err, &validationErr)
+		assert.Equal(t, "query", validationErr.Field)
+		assert.Contains(t, validationErr.Message, "cannot be empty")
+	})
+
+	t.Run("whitespace-only query validation", func(t *testing.T) {
+		client, err := NewClient("test-api-key")
+		require.NoError(t, err)
+
+		_, err = client.RecommendProductCode(context.Background(), "   \t\n  ")
+		require.Error(t, err)
+
+		var validationErr *ValidationError
+		require.ErrorAs(t, err, &validationErr)
+		assert.Equal(t, "query", validationErr.Field)
+	})
+
+	t.Run("query exceeds max length", func(t *testing.T) {
+		client, err := NewClient("test-api-key")
+		require.NoError(t, err)
+
+		longQuery := strings.Repeat("a", 501)
+		_, err = client.RecommendProductCode(context.Background(), longQuery)
+		require.Error(t, err)
+
+		var validationErr *ValidationError
+		require.ErrorAs(t, err, &validationErr)
+		assert.Equal(t, "query", validationErr.Field)
+		assert.Contains(t, validationErr.Message, "exceeds maximum length")
+	})
+
+	t.Run("API error response", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{
+				"metadata": {
+					"response": {
+						"code": 429,
+						"name": "TOO_MANY_REQUESTS",
+						"message": "Rate limit exceeded"
+					}
+				}
+			}`))
+		}))
+		defer server.Close()
+
+		client, err := NewClient("test-api-key", WithBaseURL(server.URL), WithMaxRetries(0))
+		require.NoError(t, err)
+
+		_, err = client.RecommendProductCode(context.Background(), "test query")
+		require.Error(t, err)
+
+		var apiErr *APIError
+		require.ErrorAs(t, err, &apiErr)
+		assert.Equal(t, 429, apiErr.StatusCode)
+	})
 }

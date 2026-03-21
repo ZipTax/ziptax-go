@@ -354,6 +354,61 @@ func TestValidatePostalCode(t *testing.T) {
 	}
 }
 
+func TestValidateProductQuery(t *testing.T) {
+	tests := []struct {
+		name    string
+		query   string
+		wantErr bool
+	}{
+		{
+			name:    "valid query",
+			query:   "baked goods sold in plastic packaging",
+			wantErr: false,
+		},
+		{
+			name:    "empty query",
+			query:   "",
+			wantErr: true,
+		},
+		{
+			name:    "whitespace only",
+			query:   "   ",
+			wantErr: true,
+		},
+		{
+			name:    "tabs and newlines only",
+			query:   "\t\n  ",
+			wantErr: true,
+		},
+		{
+			name:    "single word",
+			query:   "clothing",
+			wantErr: false,
+		},
+		{
+			name:    "max length query (500 chars)",
+			query:   strings.Repeat("a", 500),
+			wantErr: false,
+		},
+		{
+			name:    "query exceeds max length (501 chars)",
+			query:   strings.Repeat("a", 501),
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateProductQuery(tt.query)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestNormalizePostalCode(t *testing.T) {
 	tests := []struct {
 		name     string

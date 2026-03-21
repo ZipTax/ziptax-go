@@ -408,6 +408,14 @@ When extending this SDK with AI assistance:
 
 See [CHANGELOG.md](./CHANGELOG.md) for detailed release notes.
 
+### v0.2.3-beta (Product Code Search)
+- SearchProductCodes for searching TICs by natural language description
+- RecommendProductCode for AI-powered best-match TIC recommendation
+- Product code models: request, response, search result, recommendation
+- ValidateProductQuery validation for non-empty query strings
+- Product code search example in examples/product_code_search/
+- Comprehensive test coverage (93.0%)
+
 ### v0.2.2-beta (Create Order from Cart)
 - CreateOrderFromCart for converting TaxCloud carts into finalized orders
 - CreateOrderFromCartRequest model with cartId and orderId
@@ -444,4 +452,4 @@ See [CHANGELOG.md](./CHANGELOG.md) for detailed release notes.
 
 **Maintained with**: Claude (Anthropic AI Assistant)
 **Development Approach**: AI-Pair Programming
-**Last Updated**: February 2026
+**Last Updated**: March 2026

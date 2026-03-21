@@ -323,6 +323,100 @@ func WithFormat(format string) RequestOption {
 	}
 }
 
+// SearchProductCodes searches for product codes (TICs) by natural language description.
+// Returns all matching Taxability Information Codes ranked and scored by relevance.
+//
+// Use the returned TicID as the taxabilityCode parameter in rate requests or
+// cart line items. For v60 rate requests (e.g., GetSalesTaxByAddress), pass TicID
+// as a string. For cart line items, convert to int64.
+//
+// Example:
+//
+//	ctx := context.Background()
+//	response, err := client.SearchProductCodes(ctx, "baked goods sold in plastic packaging")
+//	if err != nil {
+//		return fmt.Errorf("failed to search product codes: %w", err)
+//	}
+//	for _, result := range response.Results {
+//		fmt.Printf("TIC %s: %s (rank %s, score %s)\n",
+//			result.TicID, result.Label, result.Rank, result.Score)
+//	}
+func (c *Client) SearchProductCodes(ctx context.Context, query string) (*models.ProductCodeSearchResponse, error) {
+	// Validate query
+	if err := validation.ValidateProductQuery(query); err != nil {
+		return nil, &ValidationError{
+			Field:   "query",
+			Value:   query,
+			Message: err.Error(),
+		}
+	}
+
+	// Build request body
+	reqBody := &models.ProductCodeSearchRequest{
+		Query: query,
+	}
+
+	// Make the POST request to ZipTax API.
+	// Note: Post() requires explicit baseURL and headers because it was designed
+	// for multi-API routing (ZipTax vs TaxCloud). Unlike Get(), which auto-sets
+	// X-API-Key from the HTTP client's stored key, Post() relies on the caller
+	// to provide headers. This is consistent with calculateCartZipTax and all
+	// other Post() call sites.
+	var response models.ProductCodeSearchResponse
+	if err := c.httpClient.Post(ctx, c.config.BaseURL, "/search/tic", map[string]string{
+		"X-API-Key": c.config.APIKey,
+	}, reqBody, &response); err != nil {
+		return nil, wrapError("failed to search product codes", err)
+	}
+
+	return &response, nil
+}
+
+// RecommendProductCode gets an AI-powered product code (TIC) recommendation.
+// Returns a single best-match TIC code with higher accuracy than SearchProductCodes.
+// Has slightly higher latency due to the AI processing step.
+//
+// Use the returned TicID as the taxabilityCode parameter in rate requests or
+// cart line items. For v60 rate requests (e.g., GetSalesTaxByAddress), pass TicID
+// as a string. For cart line items, convert to int64.
+//
+// Example:
+//
+//	ctx := context.Background()
+//	response, err := client.RecommendProductCode(ctx, "baked goods sold in plastic packaging")
+//	if err != nil {
+//		return fmt.Errorf("failed to recommend product code: %w", err)
+//	}
+//	prediction := response.Predictions[0]
+//	if prediction.Status == "success" {
+//		fmt.Printf("Recommended TIC: %s (%s)\n", prediction.TicID, prediction.Label)
+//	}
+func (c *Client) RecommendProductCode(ctx context.Context, query string) (*models.ProductCodeRecommendationResponse, error) {
+	// Validate query
+	if err := validation.ValidateProductQuery(query); err != nil {
+		return nil, &ValidationError{
+			Field:   "query",
+			Value:   query,
+			Message: err.Error(),
+		}
+	}
+
+	// Build request body
+	reqBody := &models.ProductCodeSearchRequest{
+		Query: query,
+	}
+
+	// Make the POST request to ZipTax API (see SearchProductCodes for Post() pattern notes).
+	var response models.ProductCodeRecommendationResponse
+	if err := c.httpClient.Post(ctx, c.config.BaseURL, "/search/tic/recommend", map[string]string{
+		"X-API-Key": c.config.APIKey,
+	}, reqBody, &response); err != nil {
+		return nil, wrapError("failed to recommend product code", err)
+	}
+
+	return &response, nil
+}
+
 // CreateOrder creates an order in TaxCloud for order management and tax filing.
 // This function requires TaxCloud credentials to be configured during client initialization.
 //
