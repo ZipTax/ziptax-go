@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"math/rand"
 	"net/http"
@@ -26,6 +27,22 @@ func DefaultRetryPolicy(maxRetries int, minWait, maxWait time.Duration) *RetryPo
 		CheckRetry: DefaultCheckRetry,
 		Backoff:    ExponentialBackoff,
 	}
+}
+
+// SingleAttempt returns a copy of policy that performs exactly one attempt.
+//
+// Use it for requests that are not safe to repeat, where a duplicate submission
+// creates a duplicate record server-side rather than converging on the same
+// state. Retrying those is worse than failing: the caller cannot tell from the
+// error that extra records were created.
+func SingleAttempt(policy *RetryPolicy) *RetryPolicy {
+	if policy == nil {
+		return &RetryPolicy{CheckRetry: DefaultCheckRetry, Backoff: ExponentialBackoff}
+	}
+
+	once := *policy
+	once.MaxRetries = 0
+	return &once
 }
 
 // DefaultCheckRetry is the default retry check function.
@@ -72,8 +89,23 @@ func DoWithRetry(ctx context.Context, client *http.Client, req *http.Request, po
 			return nil, ctx.Err()
 		}
 
-		// Clone the request for retry (in case body needs to be re-read)
+		// Clone the request for retry (in case body needs to be re-read).
 		reqClone := req.Clone(ctx)
+
+		// Clone copies the Body reader by reference, so after the first attempt
+		// drains it every later attempt would send 0 bytes while ContentLength
+		// still claims the original size. net/http rejects that locally with
+		// "ContentLength=N with Body length 0", which never reaches the server
+		// and masks the real error. GetBody hands back a fresh reader over the
+		// same payload; net/http populates it for the body types Post and Patch
+		// use (*bytes.Reader).
+		if req.GetBody != nil {
+			body, bodyErr := req.GetBody()
+			if bodyErr != nil {
+				return nil, fmt.Errorf("failed to rewind request body for retry: %w", bodyErr)
+			}
+			reqClone.Body = body
+		}
 
 		resp, err = client.Do(reqClone)
 

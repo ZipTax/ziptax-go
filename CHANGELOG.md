@@ -56,6 +56,25 @@ response shapes on those endpoints may change before general availability.
   core/geo/merchant breakdown, use the new `GetDetailedAccountMetrics`.
 - Test coverage: 91.4% on the root package, 100% on `internal/validation`
 
+### Fixed
+- **Retried requests no longer send an empty body.** `DoWithRetry` cloned the
+  request, but `http.Request.Clone` copies `Body` by reference, so once the first
+  attempt drained it every later attempt sent 0 bytes while `ContentLength` still
+  claimed the original size. `net/http` rejected that locally with
+  `ContentLength=N with Body length 0`, so the retry never reached the server and
+  the real API error was replaced by a confusing transport error. The body is now
+  rewound from `Request.GetBody` before each attempt. This affected every retried
+  POST and PATCH; GET was unaffected.
+- **Non-idempotent operations are no longer retried.** With retries enabled, a
+  transport error or 5xx on a refund could resubmit it and record a duplicate,
+  with nothing in the returned error to indicate it. These now make exactly one
+  attempt regardless of `WithMaxRetries`:
+  `CreateMerchantRefund`, `RefundOrder` (deprecated), `CreateMerchant`, and
+  `CreateMerchantCertificate`. The first two duplicate a refund; the last two
+  have server-assigned IDs, so a repeat creates a second record. Reads, cart
+  calculation, and the order operations (keyed by a caller-supplied `orderId`)
+  keep the configured retry behavior. See the README for how to reconcile.
+
 ### Deprecated
 The direct TaxCloud integration still works and is unchanged in behavior. It calls
 `api.v3.taxcloud.com` with a connection ID and TaxCloud API key held on the client,

@@ -594,6 +594,9 @@ func (c *Client) UpdateOrder(ctx context.Context, orderID string, request *model
 // An order can only be refunded once, regardless of whether the order is partially or fully refunded.
 // This function requires TaxCloud credentials to be configured during client initialization.
 //
+// This call is never retried automatically, whatever WithMaxRetries is set to,
+// because a repeated submission records a duplicate refund.
+//
 // Deprecated: use CreateMerchantRefund. This function calls TaxCloud directly with a
 // connection ID and TaxCloud API key configured on the client, a path no longer covered
 // by the ZipTax API documentation. See the Migration section of the README.
@@ -643,9 +646,10 @@ func (c *Client) RefundOrder(ctx context.Context, orderID string, request *model
 		"X-API-Key": c.config.TaxCloudAPIKey,
 	}
 
-	// Make the POST request to TaxCloud API
+	// Make the POST request to TaxCloud API. Not retried: a repeated submission
+	// records a second refund, which the caller cannot detect from the error.
 	var response []models.RefundTransactionResponse
-	if err := c.httpClient.Post(ctx, c.config.TaxCloudBaseURL, path, headers, request, &response); err != nil {
+	if err := c.httpClient.PostOnce(ctx, c.config.TaxCloudBaseURL, path, headers, request, &response); err != nil {
 		return nil, wrapError("failed to refund order", err)
 	}
 

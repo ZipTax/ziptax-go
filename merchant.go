@@ -24,8 +24,26 @@ import (
 // Post() takes an explicit base URL and headers because it was built for
 // multi-API routing (ZipTax vs TaxCloud); unlike Get(), it does not auto-set
 // the API key. This helper supplies both for the ZipTax API.
+//
+// The request follows the client's retry policy. Use postZipTaxOnce for
+// operations that must not be repeated automatically.
 func (c *Client) postZipTax(ctx context.Context, path string, body, result interface{}) error {
 	return c.httpClient.Post(ctx, c.config.BaseURL, path, map[string]string{
+		APIKeyHeader: c.config.APIKey,
+	}, body, result)
+}
+
+// postZipTaxOnce performs a POST against the ZipTax API using exactly one
+// attempt, ignoring the client's retry policy.
+//
+// It is used by the operations whose repetition creates an additional record
+// server-side rather than converging on the same state, so an automatic retry
+// after a timeout or 5xx could silently duplicate it: refunds, and the creates
+// whose identifier the server generates (merchants and exemption certificates).
+// Operations keyed by a caller-supplied identifier, such as order creation, are
+// not in this group; resubmitting those conflicts rather than duplicating.
+func (c *Client) postZipTaxOnce(ctx context.Context, path string, body, result interface{}) error {
+	return c.httpClient.PostOnce(ctx, c.config.BaseURL, path, map[string]string{
 		APIKeyHeader: c.config.APIKey,
 	}, body, result)
 }
@@ -36,6 +54,11 @@ func (c *Client) postZipTax(ctx context.Context, path string, body, result inter
 // It defaults to models.MerchantTypeTaxCloud, which starts the TaxCloud invite
 // process; use models.MerchantTypeSelfManaged for a merchant that is active
 // immediately and handles its own registration, filing, and remittance.
+//
+// This call is never retried automatically, whatever WithMaxRetries is set to,
+// because the server assigns the merchant ID: a resubmission would create a
+// second merchant. If it fails without a clear outcome, call ListMerchants to
+// check whether the merchant was created before trying again.
 //
 // Example:
 //
@@ -69,8 +92,10 @@ func (c *Client) CreateMerchant(ctx context.Context, request *models.CreateMerch
 		}
 	}
 
+	// Not retried: the server generates the merchantId, so a repeated submission
+	// creates a second merchant rather than returning the first.
 	var response models.MerchantOperationResponse
-	if err := c.postZipTax(ctx, "/merchant/create", request, &response); err != nil {
+	if err := c.postZipTaxOnce(ctx, "/merchant/create", request, &response); err != nil {
 		return nil, wrapError("failed to create merchant", err)
 	}
 

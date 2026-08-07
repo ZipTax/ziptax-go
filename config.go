@@ -45,8 +45,15 @@ type Config struct {
 	// Defaults to DefaultTimeout if not specified.
 	Timeout time.Duration
 
-	// MaxRetries is the maximum number of retry attempts for failed requests.
-	// Set to 0 to disable retries. Defaults to DefaultMaxRetries.
+	// MaxRetries is the maximum number of retry attempts for failed requests,
+	// applied to transport errors, 5xx responses, and 429.
+	//
+	// Retries are off unless you ask for them: the zero value means no retries,
+	// and applyDefaults only substitutes DefaultMaxRetries when the value is
+	// negative. Set it with WithMaxRetries.
+	//
+	// Operations that are not safe to repeat never retry regardless of this
+	// setting. See Client.CreateMerchantRefund.
 	MaxRetries int
 
 	// RetryWaitMin is the minimum wait time between retries.

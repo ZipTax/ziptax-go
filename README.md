@@ -818,6 +818,47 @@ wg.Wait()
 - `WithTimeout(timeout time.Duration)` - Set request timeout
 - `WithMaxRetries(max int)` - Set maximum retry attempts (0 to disable)
 - `WithRetryWait(min, max time.Duration)` - Set retry backoff times
+
+### Retries and non-idempotent operations
+
+Retries are **off by default**; `WithMaxRetries` turns them on. When enabled, the
+client retries transport errors, 5xx responses, and 429.
+
+Some operations are never retried, whatever `WithMaxRetries` is set to, because
+each request creates a new record server-side rather than converging on the same
+state. Retrying one of those after a timeout would duplicate it, and nothing in
+the returned error would tell you it happened:
+
+| Never retried | Why |
+| --- | --- |
+| `CreateMerchantRefund` | A duplicate submission records a duplicate refund |
+| `RefundOrder` (deprecated) | Same TaxCloud endpoint |
+| `CreateMerchant` | The server assigns the merchant ID, so a repeat creates a second merchant |
+| `CreateMerchantCertificate` | The server assigns the certificate ID, so a repeat creates a second certificate |
+
+These surface the transport error or 5xx instead, leaving the outcome genuinely
+unknown rather than silently doubled. Reconcile by reading current state before
+resubmitting:
+
+```go
+refund, err := client.CreateMerchantRefund(ctx, req)
+if err != nil {
+    // The refund may or may not have been recorded. Check before retrying.
+    order, getErr := client.GetMerchantOrder(ctx, &models.MerchantGetOrderRequest{
+        MerchantID: merchantID,
+        OrderID:    orderID,
+        Expand:     models.ExpandRefunds,
+    })
+    if getErr == nil && len(order.Refunds) > 0 {
+        // It landed; do not resubmit.
+    }
+}
+```
+
+Order creation is **not** in this group: `CreateMerchantOrder` and
+`CreateMerchantOrderFromCart` are keyed by the `OrderID` you supply, so a repeat
+conflicts rather than duplicating. Cart calculation and all reads are documented
+by the API as safe to retry.
 - `WithLogger(logger Logger)` - Enable request/response logging
 - `WithUserAgent(ua string)` - Set a custom User-Agent header
 

@@ -286,7 +286,11 @@ func (c *Client) UpdateMerchantOrder(ctx context.Context, request *models.Mercha
 // Refund prices and tax amounts are calculated automatically from the order; when
 // the order had discounts, refunds use the discounted prices actually paid.
 //
-// Do not retry refunds blindly: a duplicate submission records a duplicate refund.
+// A duplicate submission records a duplicate refund, so this call is never
+// retried automatically, whatever WithMaxRetries is set to. A transport error
+// or 5xx is surfaced instead, leaving the outcome genuinely unknown rather than
+// silently doubled. Before resubmitting, read the order back with
+// GetMerchantOrder using models.ExpandRefunds to see whether the refund landed.
 //
 // Requires a TaxCloud-connected merchant.
 //
@@ -316,8 +320,10 @@ func (c *Client) CreateMerchantRefund(ctx context.Context, request *models.Merch
 		return nil, newValidationError("MerchantCreateRefundRequest", "orderId="+request.OrderID, err)
 	}
 
+	// Not retried: a repeated submission records a second refund against the
+	// same order, which the caller cannot detect from the returned error.
 	var response models.MerchantRefundResponse
-	if err := c.postZipTax(ctx, "/merchant/refund/create", request, &response); err != nil {
+	if err := c.postZipTaxOnce(ctx, "/merchant/refund/create", request, &response); err != nil {
 		return nil, wrapError("failed to create merchant refund", err)
 	}
 
@@ -329,6 +335,12 @@ func (c *Client) CreateMerchantRefund(ctx context.Context, request *models.Merch
 //
 // Reference the returned CertificateID as the ExemptionID on carts and orders to
 // apply the exemption.
+//
+// This call is never retried automatically, whatever WithMaxRetries is set to,
+// because the server assigns the certificate ID: a resubmission would create a
+// second certificate for the same customer. If it fails without a clear
+// outcome, use ListMerchantCertificates filtered by CustomerID to check before
+// trying again.
 //
 // Requires a TaxCloud-connected merchant.
 //
@@ -377,8 +389,10 @@ func (c *Client) CreateMerchantCertificate(ctx context.Context, request *models.
 		return nil, newValidationError("MerchantCreateCertificateRequest", "customerId="+request.CustomerID, err)
 	}
 
+	// Not retried: the server generates the certificateId, so a repeated
+	// submission creates a second certificate for the same customer.
 	var response models.MerchantCertificate
-	if err := c.postZipTax(ctx, "/merchant/cert/create", request, &response); err != nil {
+	if err := c.postZipTaxOnce(ctx, "/merchant/cert/create", request, &response); err != nil {
 		return nil, wrapError("failed to create merchant exemption certificate", err)
 	}
 
