@@ -11,9 +11,28 @@ jobs:
     name: Test
     runs-on: ${{ matrix.os }}
     strategy:
+      # Without this, the first leg to go red cancels every other leg, which
+      # hides whether the rest actually pass and makes triage guesswork.
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        go-version: ['1.21', '1.22', '1.23']
+        # 'stable' tracks the current Go release. The pinned versions cover the
+        # go.mod minimum (1.21) and the range between it and stable, so the
+        # compatibility claim in the README stays verified as Go moves on.
+        go-version: ['1.21', '1.22', '1.23', 'stable']
+        exclude:
+          # macOS 26's dyld refuses to load test binaries linked by Go <= 1.22:
+          #   dyld: missing LC_UUID load command in .../pkg.test
+          #   signal: abort trap
+          # This is a toolchain limitation, not an SDK one. With these
+          # toolchains on macOS 26, `go build` succeeds and ordinary
+          # executables run fine; only `go test` binaries fail to load, with
+          # or without -race. Go >= 1.23 is unaffected on the same OS.
+          # Go 1.21 and 1.22 support stays verified on Linux and Windows.
+          - os: macos-latest
+            go-version: '1.21'
+          - os: macos-latest
+            go-version: '1.22'
 
     steps:
       - name: Checkout code
@@ -64,7 +83,7 @@ jobs:
           echo "Coverage check passed!"
 
       - name: Upload coverage to Codecov
-        if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.23'
+        if: matrix.os == 'ubuntu-latest' && matrix.go-version == 'stable'
         uses: codecov/codecov-action@v4
         with:
           files: ./coverage.out
@@ -82,7 +101,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: 'stable'
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v4
@@ -101,7 +120,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: 'stable'
 
       - name: Check formatting
         run: |
@@ -131,7 +150,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: 'stable'
 
       - name: Check go mod tidy
         run: |
@@ -153,7 +172,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: 'stable'
 
       - name: Build
         run: go build ./...
