@@ -17,6 +17,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -39,8 +40,21 @@ func main() {
 		log.Fatalf("Failed to create client: %v", err)
 	}
 
-	ctx := context.Background()
+	// These two failures happen before any merchant exists, so exiting here leaves
+	// nothing behind. Everything after this point runs inside run, which returns
+	// errors instead of exiting.
+	if err := run(context.Background(), client); err != nil {
+		log.Fatal(err)
+	}
+}
 
+// run performs the merchant lifecycle and returns an error rather than exiting.
+//
+// This matters: the example creates a real merchant and registers a deferred
+// DeleteMerchant to clean it up. log.Fatal calls os.Exit, which does not run
+// deferred functions, so calling it from the lifecycle body would leave an
+// orphaned merchant on the account every time a step failed.
+func run(ctx context.Context, client *ziptax.Client) (err error) {
 	// Step 1: Create a merchant.
 	fmt.Println("=== Create Merchant ===")
 	created, err := client.CreateMerchant(ctx, &models.CreateMerchantRequest{
@@ -52,16 +66,20 @@ func main() {
 		MerchantType: models.MerchantTypeTaxCloud,
 	})
 	if err != nil {
-		log.Fatalf("Failed to create merchant: %v", err)
+		return fmt.Errorf("failed to create merchant: %w", err)
 	}
 	merchantID := created.MerchantID
 	fmt.Printf("Merchant %s: %s\n\n", merchantID, created.Message)
 
-	// Clean up the merchant this example created, whatever happens after here.
+	// Clean up the merchant this example created. Every path out of run below is
+	// a return, so this always executes.
 	defer func() {
 		fmt.Println("\n=== Delete Merchant ===")
-		if _, err := client.DeleteMerchant(ctx, merchantID); err != nil {
-			log.Printf("Failed to delete merchant: %v", err)
+		if _, delErr := client.DeleteMerchant(ctx, merchantID); delErr != nil {
+			// Report the cleanup failure without masking whatever went wrong
+			// first: a merchant left behind needs manual attention.
+			err = errors.Join(err, fmt.Errorf(
+				"failed to delete merchant %s, delete it manually: %w", merchantID, delErr))
 			return
 		}
 		fmt.Printf("Deleted merchant %s\n", merchantID)
@@ -71,14 +89,14 @@ func main() {
 	fmt.Println("=== Get and List Merchants ===")
 	merchant, err := client.GetMerchant(ctx, merchantID)
 	if err != nil {
-		log.Fatalf("Failed to get merchant: %v", err)
+		return fmt.Errorf("failed to get merchant: %w", err)
 	}
 	fmt.Printf("%s (%s) status=%s self-managed=%t\n",
 		merchant.MerchantName, merchant.ReferenceID, merchant.Status, merchant.IsSelfManaged())
 
 	merchants, err := client.ListMerchants(ctx)
 	if err != nil {
-		log.Fatalf("Failed to list merchants: %v", err)
+		return fmt.Errorf("failed to list merchants: %w", err)
 	}
 	fmt.Printf("Account has %d merchant(s)\n\n", len(merchants))
 
@@ -89,7 +107,7 @@ func main() {
 	if connectionID == "" || taxCloudKey == "" {
 		fmt.Println("TAXCLOUD_CONNECTION_ID and TAXCLOUD_API_KEY not set.")
 		fmt.Println("Skipping the transaction steps, which need a connected merchant.")
-		return
+		return nil
 	}
 
 	fmt.Println("=== Set Merchant Credentials ===")
@@ -98,7 +116,7 @@ func main() {
 		ConnectionID: connectionID,
 		APIKey:       taxCloudKey,
 	}); err != nil {
-		log.Fatalf("Failed to set merchant credentials: %v", err)
+		return fmt.Errorf("failed to set merchant credentials: %w", err)
 	}
 	fmt.Printf("Connected merchant %s to TaxCloud\n\n", merchantID)
 
@@ -134,7 +152,7 @@ func main() {
 		},
 	})
 	if err != nil {
-		log.Fatalf("Failed to calculate cart: %v", err)
+		return fmt.Errorf("failed to calculate cart: %w", err)
 	}
 
 	for _, item := range cart.Items {
@@ -148,7 +166,7 @@ func main() {
 	if cart.IsSelfManaged() {
 		// Self-managed calculation is stateless: this cartId cannot become an order.
 		fmt.Println("\nSelf-managed merchant: calculation only, stopping here.")
-		return
+		return nil
 	}
 	fmt.Printf("Calculated under TaxCloud connection %s\n\n", cart.ConnectionID)
 
@@ -161,7 +179,7 @@ func main() {
 		OrderID:    orderID,
 	})
 	if err != nil {
-		log.Fatalf("Failed to create order from cart: %v", err)
+		return fmt.Errorf("failed to create order from cart: %w", err)
 	}
 	fmt.Printf("Recorded order %s (kind %s)\n\n", order.OrderID, order.Kind)
 
@@ -173,7 +191,7 @@ func main() {
 		CompletedDate: time.Now().UTC().Format(time.RFC3339),
 	})
 	if err != nil {
-		log.Fatalf("Failed to update order: %v", err)
+		return fmt.Errorf("failed to update order: %w", err)
 	}
 	fmt.Printf("Order %s completed on %s\n\n", updated.OrderID, updated.CompletedDate)
 
@@ -187,7 +205,7 @@ func main() {
 		},
 	})
 	if err != nil {
-		log.Fatalf("Failed to create refund: %v", err)
+		return fmt.Errorf("failed to create refund: %w", err)
 	}
 	for _, item := range refund.Items {
 		fmt.Printf("Refunded %s: %.2f x %.2f, tax %.2f\n",
@@ -202,8 +220,10 @@ func main() {
 		Expand:     models.ExpandRefunds,
 	})
 	if err != nil {
-		log.Fatalf("Failed to get order: %v", err)
+		return fmt.Errorf("failed to get order: %w", err)
 	}
 	fmt.Printf("Order %s has %d line item(s) and %d refund(s)\n",
 		final.OrderID, len(final.LineItems), len(final.Refunds))
+
+	return nil
 }
