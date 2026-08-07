@@ -96,6 +96,11 @@ func WithUserAgent(userAgent string) Option {
 // WithTaxCloudConnectionID sets the TaxCloud Connection ID for order management features.
 // This must be provided along with WithTaxCloudAPIKey to enable TaxCloud order operations.
 //
+// Deprecated: the direct TaxCloud integration is superseded by Merchant Management,
+// which reaches TaxCloud through the ZipTax API using only the ZipTax API key. Store a
+// merchant's TaxCloud credentials server-side with Client.SetMerchantCredentials and
+// address them by merchant ID instead. See the Migration section of the README.
+//
 // Example:
 //
 //	client := ziptax.NewClient(apiKey,
@@ -110,6 +115,11 @@ func WithTaxCloudConnectionID(connectionID string) Option {
 // WithTaxCloudAPIKey sets the TaxCloud API key for order management features.
 // This must be provided along with WithTaxCloudConnectionID to enable TaxCloud order operations.
 //
+// Deprecated: the direct TaxCloud integration is superseded by Merchant Management,
+// which reaches TaxCloud through the ZipTax API using only the ZipTax API key. Store a
+// merchant's TaxCloud credentials server-side with Client.SetMerchantCredentials and
+// address them by merchant ID instead. See the Migration section of the README.
+//
 // Example:
 //
 //	client := ziptax.NewClient(apiKey,
@@ -123,6 +133,10 @@ func WithTaxCloudAPIKey(apiKey string) Option {
 
 // WithTaxCloudBaseURL sets a custom base URL for the TaxCloud API.
 // Only needed if using a custom TaxCloud endpoint.
+//
+// Deprecated: the direct TaxCloud integration is superseded by Merchant Management,
+// which reaches TaxCloud through the ZipTax API. Merchant endpoints are served from
+// the ZipTax base URL, which WithBaseURL sets. See the Migration section of the README.
 //
 // Example:
 //

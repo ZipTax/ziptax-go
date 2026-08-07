@@ -1,3 +1,13 @@
+// Command taxcloud_order demonstrates the deprecated direct TaxCloud integration,
+// which calls api.v3.taxcloud.com with a connection ID and TaxCloud API key held on
+// the client.
+//
+// New integrations should use Merchant Management instead: see
+// examples/merchant_management and the Migration section of the README. This example
+// is kept so existing users of the deprecated path still have working reference code.
+//
+// The staticcheck exemptions below are deliberate: this file exercises the deprecated
+// API on purpose, so SA1019 would otherwise fire on every call.
 package main
 
 import (
@@ -27,7 +37,9 @@ func main() {
 	// Create client with TaxCloud credentials
 	client, err := ziptax.NewClient(
 		ziptaxAPIKey,
+		//nolint:staticcheck // demonstrates the deprecated direct-TaxCloud path by design
 		ziptax.WithTaxCloudConnectionID(taxCloudConnectionID),
+		//nolint:staticcheck // demonstrates the deprecated direct-TaxCloud path by design
 		ziptax.WithTaxCloudAPIKey(taxCloudAPIKey),
 	)
 	if err != nil {
@@ -72,6 +84,7 @@ func main() {
 
 	// Create the order
 	fmt.Println("Creating order in TaxCloud...")
+	//nolint:staticcheck // demonstrates the deprecated direct-TaxCloud path by design
 	response, err := client.CreateOrder(ctx, orderReq)
 	if err != nil {
 		log.Fatalf("Failed to create order: %v", err)

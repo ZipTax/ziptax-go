@@ -66,11 +66,23 @@ func main() {
 		log.Fatalf("Failed to get account metrics: %v", err)
 	}
 
-	fmt.Printf("Core Requests: %d / %d (%.2f%%)\n",
-		metrics.CoreRequestCount, metrics.CoreRequestLimit, metrics.CoreUsagePercent)
-	fmt.Printf("Geo Requests: %d / %d (%.2f%%)\n",
-		metrics.GeoRequestCount, metrics.GeoRequestLimit, metrics.GeoUsagePercent)
-	fmt.Printf("Geo Enabled: %v\n", metrics.GeoEnabled)
+	fmt.Printf("Requests: %d / %d (%.2f%%)\n",
+		metrics.RequestCount, metrics.RequestLimit, metrics.UsagePercent)
 	fmt.Printf("Account Active: %v\n", metrics.IsActive)
 	fmt.Printf("Message: %s\n", metrics.Message)
+
+	// Example 4: Get account metrics broken down by entitlement
+	fmt.Println("\n=== Get Detailed Account Metrics ===")
+	detailed, err := client.GetDetailedAccountMetrics(ctx)
+	if err != nil {
+		log.Fatalf("Failed to get detailed account metrics: %v", err)
+	}
+
+	fmt.Printf("Core Requests: %d / %d (%.2f%%)\n",
+		detailed.CoreRequestCount, detailed.CoreRequestLimit, detailed.CoreUsagePercent)
+	fmt.Printf("Geo Requests: %d / %d (%.2f%%)\n",
+		detailed.GeoRequestCount, detailed.GeoRequestLimit, detailed.GeoUsagePercent)
+	fmt.Printf("Merchant Requests: %d / %d (%.2f%%)\n",
+		detailed.MerchantRequestCount, detailed.MerchantRequestLimit, detailed.MerchantUsagePercent)
+	fmt.Printf("Geo Enabled: %v\n", detailed.GeoEnabled)
 }

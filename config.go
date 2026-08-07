@@ -65,18 +65,30 @@ type Config struct {
 	// Defaults to "ziptax-go/{version}".
 	UserAgent string
 
-	// TaxCloud configuration (optional - required for order management features)
+	// TaxCloud configuration (optional - required for the deprecated direct
+	// TaxCloud order management features).
+	//
+	// Deprecated: the direct TaxCloud integration is superseded by Merchant Management,
+	// which reaches TaxCloud through the ZipTax API using only the ZipTax API key.
+	// Store a merchant's TaxCloud credentials server-side with Client.SetMerchantCredentials
+	// and address them by merchant ID. See the Migration section of the README.
 
 	// TaxCloudConnectionID is the TaxCloud Connection ID for order operations.
 	// If not provided, TaxCloud order features will not be available.
+	//
+	// Deprecated: see Client.SetMerchantCredentials.
 	TaxCloudConnectionID string
 
 	// TaxCloudAPIKey is the TaxCloud API key for authentication.
 	// If not provided, TaxCloud order features will not be available.
+	//
+	// Deprecated: see Client.SetMerchantCredentials.
 	TaxCloudAPIKey string
 
 	// TaxCloudBaseURL is the base URL for the TaxCloud API.
 	// Defaults to DefaultTaxCloudBaseURL if not specified.
+	//
+	// Deprecated: merchant endpoints are served from BaseURL.
 	TaxCloudBaseURL string
 }
 
@@ -135,6 +147,9 @@ func (c *Config) applyDefaults() {
 }
 
 // HasTaxCloudCredentials returns true if TaxCloud credentials are configured.
+//
+// Deprecated: this reports only whether the deprecated direct TaxCloud integration is
+// configured. Merchant Management needs no TaxCloud credentials on the client.
 func (c *Config) HasTaxCloudCredentials() bool {
 	return c.TaxCloudConnectionID != "" && c.TaxCloudAPIKey != ""
 }

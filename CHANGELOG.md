@@ -5,6 +5,82 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0-beta] - 2026-08-07
+
+Aligns the SDK with the v6.0 API surface documented at https://docs.zip.tax.
+
+The headline change is **Merchant Management**: platforms can now provision tax
+compliance for their own customers through the ZipTax API, using only the ZipTax
+API key. This supersedes the direct TaxCloud integration, which is now deprecated
+but still works. See the Migration section of the README.
+
+Merchant Management is a Private Preview feature and Self-Managed Cart Calculation
+is still in active development. Contact support@zip.tax for access. Request and
+response shapes on those endpoints may change before general availability.
+
+### Added
+- **Merchant Management** (`merchant.go`, `models/merchant.go`):
+  - `CreateMerchant`, `UpdateMerchant`, `DeleteMerchant`, `GetMerchant`, `ListMerchants`
+  - `SetMerchantCredentials`, `DeleteMerchantCredentials`
+  - Two compliance models via `MerchantType`: `MerchantTypeTaxCloud` (default) and `MerchantTypeSelfManaged`
+  - `Merchant.IsSelfManaged()` helper and the four `MerchantStatus*` lifecycle constants
+- **Merchant Transactions** (`merchant_transactions.go`):
+  - `CalculateMerchantCart` posts to `POST /merchant/cart/calculate` and serves both
+    compliance models from one request contract. `MerchantCalculateCartResponse.IsSelfManaged()`
+    distinguishes a ZipTax in-process calculation from a TaxCloud one.
+  - `CreateMerchantOrder`, `CreateMerchantOrderFromCart`, `GetMerchantOrder`, `UpdateMerchantOrder`
+  - `CreateMerchantRefund`
+  - `CreateMerchantCertificate`, `GetMerchantCertificate`, `ListMerchantCertificates`,
+    `DeleteMerchantCertificate` for exemption certificates, with cursor pagination
+  - Line-item and order-level discounts via `MerchantDiscounts`
+- **Reference data and system endpoints** (`system.go`, `models/system.go`):
+  - `GetTICCodes` for the full TIC catalog (`GET /data/tic`)
+  - `GetTICSearchSchema` for the product code search JSON Schema (`GET /schemas/ticsearch`)
+  - `GetHealth` (`GET /system/health`) with a `HealthResponse.IsHealthy()` helper
+  - `GetSystemMetadata` (`GET /system/metadata`)
+  - `GetDetailedAccountMetrics` (`GET /account/metrics`) reporting usage per entitlement,
+    including the new merchant request counters
+- Merchant validation helpers in `internal/validation/merchant.go`, covering merchant IDs,
+  names, compliance models, credentials, carts, orders, certificates, and list pagination
+- Merchant management example in `examples/merchant_management/`
+
+### Changed
+- **Fixed `V60AccountMetrics` to match what `/account/v60/metrics` actually returns.**
+  The struct carried the unversioned endpoint's core/geo field set, so
+  `CoreRequestCount`, `CoreRequestLimit`, `CoreUsagePercent`, `GeoEnabled`,
+  `GeoRequestCount`, `GeoRequestLimit`, and `GeoUsagePercent` never populated and
+  always read as zero. They are replaced by the fields the endpoint really sends:
+  `RequestCount`, `RequestLimit`, and `UsagePercent`. `IsActive` and `Message` are
+  unchanged. This breaks compilation for code reading the old fields; those fields
+  were already returning zero, so no correct behavior depended on them. For the
+  core/geo/merchant breakdown, use the new `GetDetailedAccountMetrics`.
+- Test coverage: 91.4% on the root package, 100% on `internal/validation`
+
+### Deprecated
+The direct TaxCloud integration still works and is unchanged in behavior. It calls
+`api.v3.taxcloud.com` with a connection ID and TaxCloud API key held on the client,
+a path no longer covered by the ZipTax API documentation.
+
+| Deprecated | Replacement |
+| --- | --- |
+| `CreateOrder` | `CreateMerchantOrder` |
+| `GetOrder` | `GetMerchantOrder` |
+| `UpdateOrder` | `UpdateMerchantOrder` |
+| `RefundOrder` | `CreateMerchantRefund` |
+| `CreateOrderFromCart` | `CreateMerchantOrderFromCart` |
+| `CalculateCart` (TaxCloud branch only) | `CalculateMerchantCart` |
+| `WithTaxCloudConnectionID`, `WithTaxCloudAPIKey` | `SetMerchantCredentials` |
+| `WithTaxCloudBaseURL` | `WithBaseURL` |
+| `Config.HasTaxCloudCredentials` | not needed; merchant endpoints use the ZipTax key |
+
+`CalculateCart` itself is not deprecated: its default ZipTax branch (`POST /calculate/cart`)
+remains supported. Only the TaxCloud routing branch is superseded.
+
+### Notes
+- `/merchant/credentials/get` exists in the API but is not part of the public
+  documentation, so it is deliberately not exposed by the SDK.
+- `GET /data/tic` can also serve XML. The SDK requests JSON only.
+
 ## [0.2.3-beta] - 2026-03-20
 
 ### Added

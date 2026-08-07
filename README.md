@@ -12,14 +12,17 @@ Official Go SDK for the [ZipTax API](https://zip.tax/) - get accurate sales and 
 - 🔄 Automatic retry with exponential backoff
 - ⏱️ Context support for timeouts and cancellation
 - 🔍 Input validation
-- 🧪 Comprehensive test coverage (>88%)
+- 🧪 Comprehensive test coverage (>91%)
 - 📝 Full type safety with Go structs
 - 🔐 Secure API key authentication
 - 🌐 Support for US and Canadian addresses
 - 📍 Geolocation-based lookups
 - 🏷️ **Product Code (TIC) Search** - Search and AI-powered recommendation for Taxability Information Codes
-- 🛒 **Cart Tax Calculation** - Calculate sales tax on shopping carts (ZipTax or TaxCloud)
-- 📦 **TaxCloud Order Management** - Create, retrieve, update, and refund orders
+- 🛒 **Cart Tax Calculation** - Calculate sales tax on shopping carts
+- 🏪 **Merchant Management** - Provision tax compliance for the merchants on your platform
+- 🧾 **Merchant Transactions** - Orders, refunds, and exemption certificates on a merchant's behalf
+- 🩺 **Reference data & health** - TIC catalog, JSON Schema, service health, and account usage
+- 📦 **TaxCloud Order Management** (deprecated) - see [Migration](#migration-from-direct-taxcloud-to-merchant-management)
 
 ## Installation
 
@@ -83,9 +86,15 @@ client, err := ziptax.NewClient(
 )
 ```
 
-**Enable TaxCloud Order Management (Optional):**
+The same client covers every endpoint in this README, including Merchant Management.
+Merchant endpoints authenticate with your ZipTax API key; a merchant's own TaxCloud
+credentials are stored server-side with [`SetMerchantCredentials`](#store-taxcloud-credentials-for-a-merchant).
 
-To use TaxCloud order features, provide both TaxCloud credentials during initialization:
+**Enable the deprecated direct TaxCloud integration (optional):**
+
+> **Deprecated.** These options configure calls straight to `api.v3.taxcloud.com`.
+> Use [Merchant Management](#merchant-management) instead. See
+> [Migration](#migration-from-direct-taxcloud-to-merchant-management).
 
 ```go
 client, err := ziptax.NewClient(
@@ -137,10 +146,52 @@ for _, result := range response.Results {
 
 ### Get Account Metrics
 
+`GetAccountMetrics` reads `/account/v60/metrics`, which reports one combined counter:
+
 ```go
 metrics, err := client.GetAccountMetrics(ctx)
-fmt.Printf("Core Usage: %.2f%%\n", metrics.CoreUsagePercent)
-fmt.Printf("Geo Usage: %.2f%%\n", metrics.GeoUsagePercent)
+fmt.Printf("Usage: %d / %d (%.2f%%)\n",
+    metrics.RequestCount, metrics.RequestLimit, metrics.UsagePercent)
+```
+
+For usage per entitlement, including the merchant counters, use
+`GetDetailedAccountMetrics`, which reads `/account/metrics`:
+
+```go
+detailed, err := client.GetDetailedAccountMetrics(ctx)
+fmt.Printf("Core Usage: %.2f%%\n", detailed.CoreUsagePercent)
+fmt.Printf("Geo Usage: %.2f%%\n", detailed.GeoUsagePercent)
+fmt.Printf("Merchant Usage: %.2f%%\n", detailed.MerchantUsagePercent)
+```
+
+> **Changed in v0.3.0-beta.** `V60AccountMetrics` previously declared the core/geo
+> fields that `/account/metrics` returns, not the ones `/account/v60/metrics` sends,
+> so they always decoded as zero. They are now `RequestCount`, `RequestLimit`, and
+> `UsagePercent`. Use `GetDetailedAccountMetrics` for the core/geo/merchant breakdown.
+
+### System Health and Reference Data
+
+These endpoints are public and need no API key; the SDK sends yours anyway and the
+API ignores it.
+
+```go
+// Full TIC catalog
+catalog, err := client.GetTICCodes(ctx)
+for _, entry := range catalog.TICList {
+    fmt.Printf("%s: %s\n", entry.TIC.ID, entry.TIC.Title)
+}
+
+// JSON Schema for the product code search response
+schema, err := client.GetTICSearchSchema(ctx)
+
+// Service health
+health, err := client.GetHealth(ctx)
+fmt.Printf("healthy: %t (%d tax data records)\n",
+    health.IsHealthy(), health.Components.TaxDataCount)
+
+// Serving instance metadata
+meta, err := client.GetSystemMetadata(ctx)
+fmt.Printf("%s running %s\n", meta.Hostname, meta.GoVersion)
 ```
 
 ## Product Code Search (TIC)
@@ -209,7 +260,10 @@ lineItem := models.CartLineItem{
 Calculate sales tax on a shopping cart. The SDK routes the request automatically based on your client configuration:
 
 - **Without TaxCloud credentials**: Routes to the ZipTax `/calculate/cart` API
-- **With TaxCloud credentials**: Routes to the TaxCloud `/tax/connections/{connectionId}/carts` API
+- **With TaxCloud credentials**: Routes to the TaxCloud `/tax/connections/{connectionId}/carts` API — **deprecated**, use [`CalculateMerchantCart`](#calculate-cart-tax-for-a-merchant)
+
+`CalculateCart` itself is not deprecated. Its default ZipTax branch is fully supported;
+only the TaxCloud routing branch is superseded by Merchant Management.
 
 ```go
 cartReq := &models.CalculateCartRequest{
@@ -267,7 +321,295 @@ fmt.Printf("Order created: %s\n", order.OrderID)
 
 To set a completed date on the order, use `UpdateOrder` after creation.
 
+## Merchant Management
+
+Merchant Management lets platforms and SaaS businesses provision tax compliance for
+their own customers. You create a merchant for each seller on your platform, then
+manage that merchant's compliance through ZipTax.
+
+Every merchant endpoint authenticates with your ZipTax API key. No TaxCloud
+credentials are configured on the client.
+
+> **Private Preview.** Contact [support@zip.tax](mailto:support@zip.tax) for access.
+> Self-Managed Cart Calculation is still in active development; request bodies,
+> responses, and supported fields may change before general availability.
+
+### Compliance models
+
+Each merchant uses one of two models, chosen once at creation via `MerchantType`:
+
+| | `MerchantTypeSelfManaged` | `MerchantTypeTaxCloud` (default) |
+| --- | --- | --- |
+| Activation | Active immediately, no invite | TaxCloud invite sent to `ContactEmail` |
+| Status on reads | `external_compliance` | `taxcloud_invited` → `taxcloud_connected` |
+| Registration, filing, remittance | The merchant handles their own | TaxCloud handles all three |
+| Available endpoints | `CalculateMerchantCart` only | All merchant endpoints |
+
+Everything except `CalculateMerchantCart` returns HTTP 403 for a self-managed
+merchant, which has no TaxCloud connection to store or read state in.
+
+### Create and manage merchants
+
+```go
+resp, err := client.CreateMerchant(ctx, &models.CreateMerchantRequest{
+    MerchantName: "Acme Supply Co",
+    ContactEmail: "ops@acme.example",
+    ReferenceID:  "seller-42",              // your own identifier
+    MerchantType: models.MerchantTypeTaxCloud,
+})
+if err != nil {
+    log.Fatal(err)
+}
+merchantID := resp.MerchantID
+
+// Read one, or list them all
+merchant, err := client.GetMerchant(ctx, merchantID)
+fmt.Printf("%s is %s\n", merchant.MerchantName, merchant.Status)
+
+merchants, err := client.ListMerchants(ctx)
+
+// Update mutable fields. MerchantName is required even when unchanged.
+_, err = client.UpdateMerchant(ctx, &models.UpdateMerchantRequest{
+    MerchantID: merchantID,
+    Update: models.MerchantUpdate{
+        MerchantName: "Acme Supply Co",
+        ContactEmail: "billing@acme.example",
+    },
+})
+
+// Soft-delete
+_, err = client.DeleteMerchant(ctx, merchantID)
+```
+
+### Store TaxCloud credentials for a merchant
+
+For a merchant that already has a TaxCloud account, store their credentials so
+ZipTax can act on their behalf. The API encrypts them at rest. Merchants created
+with an invite establish credentials by accepting it instead.
+
+```go
+_, err := client.SetMerchantCredentials(ctx, &models.SetMerchantCredentialsRequest{
+    MerchantID:   merchantID,
+    ConnectionID: "25eb9b97-5acb-492d-b720-c03e79cf715a",
+    APIKey:       taxCloudAPIKey,
+})
+
+// Revoke them later
+_, err = client.DeleteMerchantCredentials(ctx, merchantID)
+```
+
+### Calculate cart tax for a merchant
+
+One request contract serves both compliance models, so you never branch on merchant
+type when building a request. Check `IsSelfManaged()` on the response to tell which
+engine ran.
+
+```go
+resp, err := client.CalculateMerchantCart(ctx, &models.MerchantCalculateCartRequest{
+    MerchantID: merchantID,
+    Items: []models.MerchantCart{
+        {
+            CartID:     "my-cart-1",
+            CustomerID: "customer-453",
+            Currency:   models.Currency{}, // defaults to USD
+            Origin: models.TaxCloudAddress{
+                Line1: "323 Washington Ave N", City: "Minneapolis", State: "MN", Zip: "55401",
+            },
+            Destination: models.TaxCloudAddress{
+                Line1: "200 Spectrum Center Dr", City: "Irvine", State: "CA", Zip: "92618",
+            },
+            LineItems: []models.MerchantCartLineItem{
+                {Index: 0, ItemID: "item-1", Price: 10.75, Quantity: 1.5},
+            },
+        },
+    },
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Printf("Tax: %.2f\n", resp.Items[0].LineItems[0].Tax.Amount)
+
+if resp.IsSelfManaged() {
+    // Calculated in-process by the ZipTax rate engine. Stateless: this cartId
+    // cannot be captured as an order.
+} else {
+    // Forwarded to TaxCloud. Capture the cartId with CreateMerchantOrderFromCart.
+}
+```
+
+Self-managed calculation **rejects** rather than ignores fields it cannot honour:
+discounts, exemptions, `DeliveredBySeller`, `ProductID`, and any currency other than
+USD. It also uses ZipTax TICs (10001 shipping, 11000 handling) rather than TaxCloud's.
+
+### Record orders
+
+Capture a calculated cart:
+
+```go
+order, err := client.CreateMerchantOrderFromCart(ctx, &models.MerchantCreateOrderFromCartRequest{
+    MerchantID: merchantID,
+    CartID:     "my-cart-1",
+    OrderID:    "my-order-1",
+})
+```
+
+Or record an order directly, supplying the tax your checkout collected:
+
+```go
+order, err := client.CreateMerchantOrder(ctx, &models.MerchantCreateOrderRequest{
+    MerchantID:      merchantID,
+    OrderID:         "my-order-1",
+    CustomerID:      "customer-453",
+    TransactionDate: "2026-08-01T14:00:00Z",
+    CompletedDate:   "2026-08-02T09:15:00Z",
+    Currency:        models.Currency{},
+    Origin:          origin,
+    Destination:     destination,
+    LineItems: []models.MerchantOrderLineItem{
+        {
+            Index: 0, ItemID: "item-1", Price: 10.75, Quantity: 1.5,
+            Tax: models.Tax{Amount: 1.31, Rate: 0.08125},
+        },
+    },
+})
+```
+
+Read and update:
+
+```go
+order, err := client.GetMerchantOrder(ctx, &models.MerchantGetOrderRequest{
+    MerchantID: merchantID,
+    OrderID:    "my-order-1",
+    Expand:     models.ExpandRefunds, // include refunds in the response
+})
+
+// Setting the completed date marks the order shipped, creating the tax liability.
+order, err = client.UpdateMerchantOrder(ctx, &models.MerchantUpdateOrderRequest{
+    MerchantID:    merchantID,
+    OrderID:       "my-order-1",
+    CompletedDate: "2026-08-03T10:00:00Z",
+})
+```
+
+### Refunds
+
+Omit `Items` to refund the whole order. Refund prices and tax are calculated
+automatically from the order.
+
+```go
+refund, err := client.CreateMerchantRefund(ctx, &models.MerchantCreateRefundRequest{
+    MerchantID: merchantID,
+    OrderID:    "my-order-1",
+    Items: []models.MerchantRefundRequestItem{
+        {ItemID: "item-1", Quantity: 1},
+    },
+})
+```
+
+> Refunds are not idempotent. A duplicate submission records a duplicate refund, so
+> do not retry them blindly.
+
+### Exemption certificates
+
+```go
+cert, err := client.CreateMerchantCertificate(ctx, &models.MerchantCreateCertificateRequest{
+    MerchantID:           merchantID,
+    CustomerID:           "customer-453",
+    CustomerName:         "Acme Reseller LLC",
+    CustomerBusinessType: models.BusinessTypeRetailTrade,
+    Reason:               models.ExemptionReasonResale,
+    ReasonDescription:    "Resale",  // max 20 characters
+    Address: models.TaxCloudAddress{
+        Line1: "323 Washington Ave N", City: "Minneapolis", State: "MN", Zip: "55401",
+    },
+    States: []models.CertificateState{{Abbreviation: "MN"}},
+})
+```
+
+Apply it to a cart or order by setting `Exemption.ExemptionID` to `cert.CertificateID`
+for the same `CustomerID`.
+
+Page through them with a cursor:
+
+```go
+req := &models.MerchantListCertificatesRequest{MerchantID: merchantID, Limit: 50}
+for {
+    page, err := client.ListMerchantCertificates(ctx, req)
+    if err != nil {
+        log.Fatal(err)
+    }
+    for _, c := range page.Items {
+        fmt.Println(c.CertificateID, c.CustomerName, c.IsActive())
+    }
+    if page.NextCursor == "" {
+        break
+    }
+    req.Cursor = page.NextCursor
+}
+
+// Disable a certificate so it can no longer be applied
+_, err = client.DeleteMerchantCertificate(ctx, merchantID, cert.CertificateID)
+```
+
+## Migration from direct TaxCloud to Merchant Management
+
+The direct TaxCloud integration calls `api.v3.taxcloud.com` with a connection ID and
+TaxCloud API key held on the client. That path is no longer covered by the ZipTax API
+documentation. It still works and is unchanged in behavior, but is deprecated.
+
+Merchant Management reaches the same TaxCloud capabilities through the ZipTax API,
+authenticated with your ZipTax key alone, addressing merchants by ID.
+
+| Deprecated | Replacement |
+| --- | --- |
+| `CreateOrder` | `CreateMerchantOrder` |
+| `GetOrder` | `GetMerchantOrder` |
+| `UpdateOrder` | `UpdateMerchantOrder` |
+| `RefundOrder` | `CreateMerchantRefund` |
+| `CreateOrderFromCart` | `CreateMerchantOrderFromCart` |
+| `CalculateCart` (TaxCloud branch only) | `CalculateMerchantCart` |
+| `WithTaxCloudConnectionID`, `WithTaxCloudAPIKey` | `SetMerchantCredentials` |
+| `WithTaxCloudBaseURL` | `WithBaseURL` |
+| `Config.HasTaxCloudCredentials` | not needed; merchant endpoints use the ZipTax key |
+
+**What changes in your code:**
+
+1. Drop `WithTaxCloudConnectionID` and `WithTaxCloudAPIKey` from `NewClient`.
+2. Create a merchant with `CreateMerchant`, then call `SetMerchantCredentials` once
+   with the connection ID and TaxCloud key you were passing to the client. Store the
+   returned `MerchantID`.
+3. Pass that `MerchantID` on every merchant call in place of the client-level credentials.
+4. Requests move from flat addresses to structured `TaxCloudAddress` values, and line
+   items carry an explicit zero-based `Index`.
+
+```go
+// Before
+client, _ := ziptax.NewClient(ziptaxKey,
+    ziptax.WithTaxCloudConnectionID(connectionID),
+    ziptax.WithTaxCloudAPIKey(taxCloudKey),
+)
+order, err := client.GetOrder(ctx, "my-order-1")
+
+// After
+client, _ := ziptax.NewClient(ziptaxKey)
+// once, at onboarding:
+//   m, _ := client.CreateMerchant(ctx, &models.CreateMerchantRequest{MerchantName: "Acme Supply Co"})
+//   client.SetMerchantCredentials(ctx, &models.SetMerchantCredentialsRequest{
+//       MerchantID: m.MerchantID, ConnectionID: connectionID, APIKey: taxCloudKey,
+//   })
+order, err := client.GetMerchantOrder(ctx, &models.MerchantGetOrderRequest{
+    MerchantID: merchantID,
+    OrderID:    "my-order-1",
+})
+```
+
 ## TaxCloud Order Management
+
+> **Deprecated.** These functions call TaxCloud directly and require TaxCloud
+> credentials on the client. Use [Merchant Management](#merchant-management) instead;
+> see [Migration](#migration-from-direct-taxcloud-to-merchant-management). They remain
+> supported for now and their behavior is unchanged.
 
 The SDK supports comprehensive order lifecycle management through the TaxCloud API. To use these features, you must configure TaxCloud credentials during client initialization.
 
@@ -495,15 +837,19 @@ wg.Wait()
 See the [examples](./examples) directory for complete examples:
 
 - [Basic Usage](./examples/basic_usage) - Simple API calls
+- [Merchant Management](./examples/merchant_management) - Provision a merchant, calculate a cart, record an order, refund it
 - [Product Code Search](./examples/product_code_search) - TIC search and AI recommendation
 - [Concurrent Usage](./examples/concurrent_usage) - Parallel requests with goroutines
 - [Error Handling](./examples/error_handling) - Proper error handling patterns
 - [Context Timeout](./examples/context_timeout) - Using context for timeouts and cancellation
-- [TaxCloud Order](./examples/taxcloud_order) - TaxCloud order management operations
+- [TaxCloud Order](./examples/taxcloud_order) - Direct TaxCloud order management (deprecated)
 
 ## API Reference
 
 For detailed API documentation, see [pkg.go.dev](https://pkg.go.dev/github.com/ziptax/ziptax-go).
+
+The API itself is documented at [docs.zip.tax](https://docs.zip.tax), with the
+canonical OpenAPI document at [docs.zip.tax/openapi.json](https://docs.zip.tax/openapi.json).
 
 ## Development
 
