@@ -104,7 +104,13 @@ jobs:
           go-version: 'stable'
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v4
+        # v4 caps at the golangci-lint v1 line, where 'latest' resolves to
+        # v1.64.8. That binary is built with Go 1.24 and cannot typecheck code
+        # under a newer toolchain, failing with:
+        #   file requires newer Go version go1.26 (application built with go1.24)
+        # v9 installs golangci-lint v2, which tracks current Go and matches the
+        # version `make lint` uses locally.
+        uses: golangci/golangci-lint-action@v9
         with:
           version: latest
           args: --timeout=5m
