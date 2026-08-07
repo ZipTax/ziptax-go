@@ -45,8 +45,15 @@ type Config struct {
 	// Defaults to DefaultTimeout if not specified.
 	Timeout time.Duration
 
-	// MaxRetries is the maximum number of retry attempts for failed requests.
-	// Set to 0 to disable retries. Defaults to DefaultMaxRetries.
+	// MaxRetries is the maximum number of retry attempts for failed requests,
+	// applied to transport errors, 5xx responses, and 429.
+	//
+	// Retries are off unless you ask for them: the zero value means no retries,
+	// and applyDefaults only substitutes DefaultMaxRetries when the value is
+	// negative. Set it with WithMaxRetries.
+	//
+	// Operations that are not safe to repeat never retry regardless of this
+	// setting. See Client.CreateMerchantRefund.
 	MaxRetries int
 
 	// RetryWaitMin is the minimum wait time between retries.
@@ -65,18 +72,30 @@ type Config struct {
 	// Defaults to "ziptax-go/{version}".
 	UserAgent string
 
-	// TaxCloud configuration (optional - required for order management features)
+	// TaxCloud configuration (optional - required for the deprecated direct
+	// TaxCloud order management features).
+	//
+	// Deprecated: the direct TaxCloud integration is superseded by Merchant Management,
+	// which reaches TaxCloud through the ZipTax API using only the ZipTax API key.
+	// Store a merchant's TaxCloud credentials server-side with Client.SetMerchantCredentials
+	// and address them by merchant ID. See the Migration section of the README.
 
 	// TaxCloudConnectionID is the TaxCloud Connection ID for order operations.
 	// If not provided, TaxCloud order features will not be available.
+	//
+	// Deprecated: see Client.SetMerchantCredentials.
 	TaxCloudConnectionID string
 
 	// TaxCloudAPIKey is the TaxCloud API key for authentication.
 	// If not provided, TaxCloud order features will not be available.
+	//
+	// Deprecated: see Client.SetMerchantCredentials.
 	TaxCloudAPIKey string
 
 	// TaxCloudBaseURL is the base URL for the TaxCloud API.
 	// Defaults to DefaultTaxCloudBaseURL if not specified.
+	//
+	// Deprecated: merchant endpoints are served from BaseURL.
 	TaxCloudBaseURL string
 }
 
@@ -135,6 +154,9 @@ func (c *Config) applyDefaults() {
 }
 
 // HasTaxCloudCredentials returns true if TaxCloud credentials are configured.
+//
+// Deprecated: this reports only whether the deprecated direct TaxCloud integration is
+// configured. Merchant Management needs no TaxCloud credentials on the client.
 func (c *Config) HasTaxCloudCredentials() bool {
 	return c.TaxCloudConnectionID != "" && c.TaxCloudAPIKey != ""
 }

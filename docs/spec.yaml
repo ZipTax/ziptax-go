@@ -9,7 +9,7 @@
 project:
   name: "ziptax-go"
   language: "go"
-  version: "0.2.3-beta"
+  version: "0.3.0-beta"
   description: "Official Go SDK for the ZipTax and TaxCloud APIs"
   module_path: "github.com/ziptax/ziptax-go"
   minimum_go_version: "1.21"
@@ -218,18 +218,21 @@ resources:
         http_method: "GET"
         path: "/account/v60/metrics"
         description: "Returns account metrics related to sales and use tax."
-        operation_id: "getAccountMetricsV60"
+        operation_id: "get-account-metrics-v-60"
         parameters:
           - name: "key"
             type: "string"
             required: false
             location: "query"
-            description: "Response format"
-            default: "json"
-            enum: ["json", "xml"]
+            description: "API key as a query parameter. The SDK sends the header form instead."
         returns:
           type: "V60AccountMetrics"
           is_array: false
+          notes:
+            - "v60 returns a COMBINED counter: request_count, request_limit, usage_percent, is_active, message"
+            - "it does NOT return the core_*/geo_*/merchant_* fields; those come from GET /account/metrics"
+            - "corrected in v0.3.0-beta: the model previously declared the core/geo fields, which never populated"
+            - "for the per-entitlement breakdown use GetDetailedAccountMetrics"
       - name: "GetRatesByPostalCode"
         http_method: "GET"
         path: "/request/v60/"
@@ -296,6 +299,11 @@ resources:
             2. If true: transform request and POST to TaxCloud, return *TaxCloudCalculateCartResponse
             3. If false: POST to ZipTax as-is (existing behavior), return *CalculateCartResponse
             4. Return type: (CalculateCartResult, error) where CalculateCartResult is an interface
+
+          DEPRECATION (v0.3.0-beta): the TaxCloud routing branch only is deprecated.
+          Use CalculateMerchantCart, which serves both compliance models through the
+          ZipTax API with only the ZipTax key. The default ZipTax branch of this
+          function (POST /calculate/cart) is NOT deprecated and remains supported.
         operation_id: "calculateCart"
         routing:
           condition: "HasTaxCloudCredentials()"
@@ -423,6 +431,9 @@ resources:
 
       # TaxCloud API Orders Endpoints
       - name: "CreateOrder"
+        deprecated: true
+        deprecated_reason: "Calls TaxCloud directly with a client-held connection ID and API key; that path is no longer in the ZipTax API documentation."
+        replaced_by: "CreateMerchantOrder"
         api: "taxcloud"  # Indicates this uses the TaxCloud API
         http_method: "POST"
         path: "/tax/connections/{connectionId}/orders"
@@ -458,6 +469,9 @@ resources:
           note: "Uses TaxCloud API Key configured during client initialization"
 
       - name: "GetOrder"
+        deprecated: true
+        deprecated_reason: "Calls TaxCloud directly with a client-held connection ID and API key; that path is no longer in the ZipTax API documentation."
+        replaced_by: "GetMerchantOrder"
         api: "taxcloud"  # Indicates this uses the TaxCloud API
         http_method: "GET"
         path: "/tax/connections/{connectionId}/orders/{orderId}"
@@ -489,6 +503,9 @@ resources:
           note: "Uses TaxCloud API Key configured during client initialization"
 
       - name: "UpdateOrder"
+        deprecated: true
+        deprecated_reason: "Calls TaxCloud directly with a client-held connection ID and API key; that path is no longer in the ZipTax API documentation."
+        replaced_by: "UpdateMerchantOrder"
         api: "taxcloud"  # Indicates this uses the TaxCloud API
         http_method: "PATCH"
         path: "/tax/connections/{connectionId}/orders/{orderId}"
@@ -524,6 +541,9 @@ resources:
 
       # TaxCloud API Refunds Endpoint
       - name: "RefundOrder"
+        deprecated: true
+        deprecated_reason: "Calls TaxCloud directly with a client-held connection ID and API key; that path is no longer in the ZipTax API documentation."
+        replaced_by: "CreateMerchantRefund"
         api: "taxcloud"  # Indicates this uses the TaxCloud API
         http_method: "POST"
         path: "/tax/connections/{connectionId}/orders/refunds/{orderId}"
@@ -560,6 +580,9 @@ resources:
 
       # TaxCloud API Cart-to-Order Endpoint
       - name: "CreateOrderFromCart"
+        deprecated: true
+        deprecated_reason: "Calls TaxCloud directly with a client-held connection ID and API key; that path is no longer in the ZipTax API documentation."
+        replaced_by: "CreateMerchantOrderFromCart"
         api: "taxcloud"  # Indicates this uses the TaxCloud API
         http_method: "POST"
         path: "/tax/connections/{connectionId}/carts/orders"
@@ -811,6 +834,385 @@ resources:
             - "Too Many Requests"
           500:
             - "Internal server error"
+
+      # -------------------------------------------------------------------------
+      # Merchant Management (added v0.3.0-beta)
+      # -------------------------------------------------------------------------
+      # Private Preview. Contact support@zip.tax for access.
+      #
+      # All merchant endpoints live on the ZipTax API and authenticate with the
+      # ZipTax API key. They do NOT use TaxCloud credentials on the client: a
+      # merchant's TaxCloud credentials are stored server-side via
+      # SetMerchantCredentials, or established by the TaxCloud invite flow.
+      #
+      # NOT EXPOSED: POST /merchant/credentials/get exists in the API but is not
+      # part of the public documentation, so the SDK deliberately omits it.
+      #
+      # All merchant endpoints return RFC 7807 problem+json errors
+      # (type, title, status, detail, instance, errors[]) rather than the
+      # ZipTax rCode envelope. The SDK surfaces them as *APIError.
+      - name: "CreateMerchant"
+        http_method: "POST"
+        path: "/merchant/create"
+        description: "Creates a merchant under the calling account."
+        operation_id: "create-merchant"
+        request_body:
+          type: "CreateMerchantRequest"
+          required_fields: ["merchantName"]
+          notes:
+            - "merchantName is 1-255 characters"
+            - "merchant_type is snake_case on the wire; enum [taxcloud, self-managed], default taxcloud"
+            - "sendTaxcloudInvite is spelled with a lowercase 'c' on the wire"
+        returns:
+          type: "MerchantOperationResponse"
+          is_array: false
+        success_status: 201
+        errors: [400, 401, 409, 422, 500]
+
+      - name: "UpdateMerchant"
+        http_method: "POST"
+        path: "/merchant/update"
+        description: "Updates a merchant's name, contact details, or reference ID."
+        operation_id: "update-merchant"
+        request_body:
+          type: "UpdateMerchantRequest"
+          required_fields: ["merchantId", "update", "update.merchantName"]
+          notes:
+            - "update.merchantName is required even when unchanged"
+        returns:
+          type: "MerchantOperationResponse"
+          is_array: false
+        errors: [400, 401, 403, 404, 422, 500]
+
+      - name: "DeleteMerchant"
+        http_method: "POST"
+        path: "/merchant/delete"
+        description: "Soft-deletes a merchant owned by the calling account."
+        operation_id: "delete-merchant"
+        request_body:
+          type: "DeleteMerchantRequest"
+          required_fields: ["merchantId"]
+        returns:
+          type: "MerchantOperationResponse"
+          is_array: false
+        errors: [400, 401, 403, 404, 422, 500]
+
+      - name: "GetMerchant"
+        http_method: "POST"
+        path: "/merchant/get"
+        description: "Retrieves a single merchant owned by the calling account."
+        operation_id: "get-merchant"
+        request_body:
+          type: "GetMerchantRequest"
+          required_fields: ["merchantId"]
+        returns:
+          type: "Merchant"
+          is_array: false
+        errors: [400, 401, 404, 422, 500]
+
+      - name: "ListMerchants"
+        http_method: "GET"
+        path: "/merchant/list"
+        description: "Returns every merchant owned by the calling account."
+        operation_id: "list-merchants"
+        returns:
+          type: "Merchant"
+          is_array: true
+        errors: [401, 500]
+
+      - name: "SetMerchantCredentials"
+        http_method: "POST"
+        path: "/merchant/credentials/set"
+        description: "Stores a merchant's TaxCloud connection ID and API key, encrypted at rest."
+        operation_id: "set-merchant-credentials"
+        request_body:
+          type: "SetMerchantCredentialsRequest"
+          required_fields: ["merchantId", "connectionId", "apiKey"]
+          notes:
+            - "apiKey is a secret; never include it in error messages or logs"
+        returns:
+          type: "MerchantOperationResponse"
+          is_array: false
+        errors: [400, 401, 403, 404, 422, 500]
+
+      - name: "DeleteMerchantCredentials"
+        http_method: "POST"
+        path: "/merchant/credentials/delete"
+        description: "Removes a merchant's stored TaxCloud credentials."
+        operation_id: "delete-merchant-credentials"
+        request_body:
+          type: "DeleteMerchantCredentialsRequest"
+          required_fields: ["merchantId"]
+        returns:
+          type: "MerchantOperationResponse"
+          is_array: false
+        errors: [400, 401, 403, 404, 422, 500]
+
+      # -------------------------------------------------------------------------
+      # Merchant Transactions (added v0.3.0-beta)
+      # -------------------------------------------------------------------------
+      # Only CalculateMerchantCart serves both compliance models. Every other
+      # endpoint here requires a TaxCloud-connected merchant and returns 403 for
+      # a self-managed merchant.
+      - name: "CalculateMerchantCart"
+        http_method: "POST"
+        path: "/merchant/cart/calculate"
+        description: "Calculates sales tax for 1-100 carts on behalf of a merchant."
+        operation_id: "merchant-cart-calculate"
+        request_body:
+          type: "MerchantCalculateCartRequest"
+          required_fields: ["merchantId", "items"]
+          notes:
+            - "One request contract serves both compliance models; ZipTax routes on merchant type"
+            - "items holds 1-100 carts; each cart needs customerId, currency, origin, destination, lineItems"
+            - "line items need a unique zero-based index"
+            - "self-managed REJECTS discounts, exemption, deliveredBySeller, productId, and non-USD currency"
+            - "self-managed uses ZipTax TICs (10001 shipping, 11000 handling); TaxCloud TICs 11010-11015 and 11098 are rejected"
+            - "self-managed allows at most 2500 line items summed across all carts"
+        returns:
+          type: "MerchantCalculateCartResponse"
+          is_array: false
+          notes:
+            - "oneOf: TaxCloud shape has connectionId, exemption, deliveredBySeller; self-managed omits all three"
+            - "SDK models both as one struct with pointer fields; use IsSelfManaged() to discriminate"
+        errors: [400, 401, 403, 404, 422, 500]
+
+      - name: "CreateMerchantOrderFromCart"
+        http_method: "POST"
+        path: "/merchant/order/create-from-cart"
+        description: "Captures a previously calculated cart as a recorded order."
+        operation_id: "merchant-order-create-from-cart"
+        request_body:
+          type: "MerchantCreateOrderFromCartRequest"
+          required_fields: ["merchantId", "cartId", "orderId"]
+          notes:
+            - "kind enum [order, credit], default order"
+            - "completedDate takes precedence over the completed boolean"
+        returns:
+          type: "MerchantOrderResponse"
+          is_array: false
+        errors: [400, 401, 403, 404, 422, 500]
+
+      - name: "CreateMerchantOrder"
+        http_method: "POST"
+        path: "/merchant/order/create"
+        description: "Records an order directly, with the tax amounts the caller's checkout collected."
+        operation_id: "merchant-order-create"
+        request_body:
+          type: "MerchantCreateOrderRequest"
+          required_fields:
+            - "merchantId"
+            - "orderId"
+            - "customerId"
+            - "transactionDate"
+            - "completedDate"
+            - "currency"
+            - "origin"
+            - "destination"
+            - "lineItems"
+          notes:
+            - "each line item carries a required tax object with amount and rate"
+            - "channel amazon/ebay/walmart excludes marketplace-collected tax from filing"
+        returns:
+          type: "MerchantOrderResponse"
+          is_array: false
+        errors: [400, 401, 403, 404, 422, 500]
+
+      - name: "GetMerchantOrder"
+        http_method: "POST"
+        path: "/merchant/order/get"
+        description: "Retrieves a recorded order. Safe to retry."
+        operation_id: "merchant-order-get"
+        request_body:
+          type: "MerchantGetOrderRequest"
+          required_fields: ["merchantId", "orderId"]
+          notes:
+            - "expand enum [refunds] includes the order's refunds in the response"
+        returns:
+          type: "MerchantOrderResponse"
+          is_array: false
+        errors: [400, 401, 403, 404, 422, 500]
+
+      - name: "UpdateMerchantOrder"
+        http_method: "POST"
+        path: "/merchant/order/update"
+        description: "Modifies a recorded order; currently completedDate, marking it shipped."
+        operation_id: "merchant-order-update"
+        request_body:
+          type: "MerchantUpdateOrderRequest"
+          required_fields: ["merchantId", "orderId"]
+          notes:
+            - "updates overwrite the fields sent; NOT safe to retry blindly"
+        returns:
+          type: "MerchantOrderResponse"
+          is_array: false
+        errors: [400, 401, 403, 404, 422, 500]
+
+      - name: "CreateMerchantRefund"
+        http_method: "POST"
+        path: "/merchant/refund/create"
+        description: "Refunds all or part of a recorded order."
+        operation_id: "merchant-refund-create"
+        request_body:
+          type: "MerchantCreateRefundRequest"
+          required_fields: ["merchantId", "orderId"]
+          notes:
+            - "omit items to refund the entire order"
+            - "prices and tax are calculated automatically from the order"
+            - "NOT idempotent: a duplicate submission records a duplicate refund"
+            - "returnedDate triggers an Amended Sales Tax Return; not typically recommended"
+        returns:
+          type: "MerchantRefundResponse"
+          is_array: false
+        errors: [400, 401, 403, 404, 422, 500]
+
+      - name: "CreateMerchantCertificate"
+        http_method: "POST"
+        path: "/merchant/cert/create"
+        description: "Creates an exemption certificate for one of a merchant's customers."
+        operation_id: "merchant-cert-create"
+        request_body:
+          type: "MerchantCreateCertificateRequest"
+          required_fields:
+            - "merchantId"
+            - "customerId"
+            - "customerName"
+            - "customerBusinessType"
+            - "reason"
+            - "reasonDescription"
+            - "address"
+            - "states"
+          notes:
+            - "reasonDescription is at most 20 characters"
+            - "customerBusinessDescription is provided when customerBusinessType is Other"
+            - "reference the returned certificateId as exemptionId on carts and orders"
+        returns:
+          type: "MerchantCertificate"
+          is_array: false
+        errors: [400, 401, 403, 404, 422, 500]
+
+      - name: "GetMerchantCertificate"
+        http_method: "POST"
+        path: "/merchant/cert/get"
+        description: "Retrieves a single exemption certificate. Safe to retry."
+        operation_id: "merchant-cert-get"
+        request_body:
+          type: "MerchantGetCertificateRequest"
+          required_fields: ["merchantId", "certificateId"]
+        returns:
+          type: "MerchantCertificate"
+          is_array: false
+        errors: [400, 401, 403, 404, 422, 500]
+
+      - name: "ListMerchantCertificates"
+        http_method: "POST"
+        path: "/merchant/cert/list"
+        description: "Pages through a merchant's exemption certificates. Safe to retry."
+        operation_id: "merchant-cert-list"
+        request_body:
+          type: "MerchantListCertificatesRequest"
+          required_fields: ["merchantId"]
+          notes:
+            - "limit defaults to 20, maximum 100"
+            - "sortBy enum [createdDate, id], default id"
+            - "ascending defaults to false; disabled defaults to false"
+            - "pass nextCursor from a response as cursor on the next call"
+        returns:
+          type: "MerchantListCertificatesResponse"
+          is_array: false
+        errors: [400, 401, 403, 404, 422, 500]
+
+      - name: "DeleteMerchantCertificate"
+        http_method: "POST"
+        path: "/merchant/cert/delete"
+        description: "Deletes (disables) an exemption certificate."
+        operation_id: "merchant-cert-delete"
+        request_body:
+          type: "MerchantDeleteCertificateRequest"
+          required_fields: ["merchantId", "certificateId"]
+        returns:
+          type: "map[string]interface{}"
+          is_array: false
+          notes:
+            - "TaxCloud's response is relayed verbatim and its shape is not fixed"
+        errors: [400, 401, 403, 404, 422, 500]
+
+      # -------------------------------------------------------------------------
+      # Reference Data and System (added v0.3.0-beta)
+      # -------------------------------------------------------------------------
+      # These four endpoints are public and require no API key. The SDK sends the
+      # configured key anyway; the API ignores it on these paths.
+      - name: "GetTICCodes"
+        http_method: "GET"
+        path: "/data/tic"
+        description: "Returns the full catalog of Taxability Information Codes."
+        operation_id: "get-tic-data"
+        parameters:
+          - name: "format"
+            type: "string"
+            required: false
+            location: "query"
+            description: "Response format. NOT exposed by the SDK, which decodes JSON only."
+            default: "json"
+            enum: ["json", "xml"]
+        returns:
+          type: "TICDataResponse"
+          is_array: false
+        errors: [429, 500]
+
+      - name: "GetTICSearchSchema"
+        http_method: "GET"
+        path: "/schemas/ticsearch"
+        description: "Returns the JSON Schema describing the product code search response."
+        operation_id: "get-tic-search-schema"
+        returns:
+          type: "map[string]interface{}"
+          is_array: false
+          notes:
+            - "a JSON Schema document, consumed by validators and codegen rather than field by field"
+        errors: [500]
+
+      - name: "GetHealth"
+        http_method: "GET"
+        path: "/system/health"
+        description: "Returns the health of the API and its components."
+        operation_id: "get-health"
+        returns:
+          type: "HealthResponse"
+          is_array: false
+          notes:
+            - "status is always 'ok' on a served response; component detail is in components"
+            - "components.dynamo enum [ok, config_error, connection_error]"
+            - "components.taxdata enum [ok, empty, partial]"
+        errors: [500]
+
+      - name: "GetSystemMetadata"
+        http_method: "GET"
+        path: "/system/metadata"
+        description: "Returns metadata about the instance serving the request."
+        operation_id: "get-metadata"
+        returns:
+          type: "SystemMetadata"
+          is_array: false
+        errors: [500]
+
+      - name: "GetDetailedAccountMetrics"
+        http_method: "GET"
+        path: "/account/metrics"
+        description: "Returns account usage broken down per entitlement: core, geo, and merchant."
+        operation_id: "get-account-metrics"
+        parameters:
+          - name: "key"
+            type: "string"
+            required: false
+            location: "query"
+            description: "API key as a query parameter. The SDK sends the header form instead."
+        returns:
+          type: "AccountMetrics"
+          is_array: false
+          notes:
+            - "distinct from GET /account/v60/metrics, which returns the combined counter shape"
+        errors: [401, 500]
 
 # -----------------------------------------------------------------------------
 # Data Models
@@ -2297,29 +2699,45 @@ structure:
     # Main package directory (root level - typical Go layout)
     - path: "."
       contents:
-        - "client.go"         # Main client implementation
-        - "config.go"         # Configuration options
-        - "errors.go"         # Error definitions and sentinel errors
-        - "options.go"        # Option types for functional options pattern
+        - "client.go"                # Rate lookups, account metrics, TIC search, deprecated TaxCloud orders
+        - "calculate_cart.go"        # Cart tax calculation with ZipTax/TaxCloud routing
+        - "merchant.go"              # Merchant Management and credentials
+        - "merchant_transactions.go" # Merchant carts, orders, refunds, exemption certificates
+        - "system.go"                # TIC catalog, JSON Schema, health, metadata, detailed metrics
+        - "config.go"                # Configuration options
+        - "errors.go"                # Error definitions and sentinel errors
+        - "options.go"               # Option types for functional options pattern
+        - "version.go"               # SDK version constant
 
     # Models package for request/response structures
     - path: "models"
       contents:
-        - "v60_response.go"   # V60 API models
-        - "v60_metadata.go"   # V60 metadata models
-        - "v60_rates.go"      # V60 rate models
-        - "account.go"        # Account metrics models
+        - "v60_response.go"          # V60 API models
+        - "v60_postal_code.go"       # V60 postal code models
+        - "v60_rates.go"             # V60 rate models
+        - "account.go"               # V60AccountMetrics and AccountMetrics
+        - "cart.go"                  # Shared cart calculation models
+        - "product_codes.go"         # TIC search and recommendation models
+        - "merchant.go"              # Merchant Management models
+        - "merchant_cart.go"         # Merchant cart calculation models
+        - "merchant_orders.go"       # Merchant order and refund models
+        - "merchant_certificates.go" # Exemption certificate models
+        - "system.go"                # Health, metadata, and TIC catalog models
+        - "taxcloud_cart.go"         # Deprecated direct-TaxCloud cart models
+        - "taxcloud_orders.go"       # Deprecated direct-TaxCloud order models
 
     # Internal utilities (not exported)
     - path: "internal/http"
       contents:
         - "client.go"         # HTTP client wrapper
         - "retry.go"          # Retry logic with exponential backoff
-        - "middleware.go"     # Request/response middleware
 
     - path: "internal/validation"
       contents:
         - "validator.go"      # Input validation utilities
+        - "address.go"        # Address parsing and validation
+        - "cart.go"           # Cart request validation
+        - "merchant.go"       # Merchant, order, and certificate validation
 
     # Test files (co-located with implementation using _test.go suffix)
     - path: "."
@@ -2500,6 +2918,21 @@ examples:
   - name: "Context Timeout"
     file: "examples/context_timeout/main.go"
     description: "Using context for request timeouts and cancellation"
+    required: false
+
+  - name: "Product Code Search"
+    file: "examples/product_code_search/main.go"
+    description: "TIC search and AI-powered recommendation"
+    required: false
+
+  - name: "Merchant Management"
+    file: "examples/merchant_management/main.go"
+    description: "Full merchant lifecycle: create, connect credentials, calculate a cart, record an order, refund it"
+    required: false
+
+  - name: "TaxCloud Order"
+    file: "examples/taxcloud_order/main.go"
+    description: "Direct TaxCloud order management (deprecated; see Merchant Management)"
     required: false
 
 # -----------------------------------------------------------------------------

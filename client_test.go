@@ -260,13 +260,9 @@ func TestClient_GetAccountMetrics(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{
-				"core_request_count": 15595,
-				"core_request_limit": 1000000,
-				"core_usage_percent": 1.5595,
-				"geo_enabled": true,
-				"geo_request_count": 43891,
-				"geo_request_limit": 1000000,
-				"geo_usage_percent": 4.3891,
+				"request_count": 15595,
+				"request_limit": 1000000,
+				"usage_percent": 1.5595,
 				"is_active": true,
 				"message": "Contact support@zip.tax to modify your account"
 			}`))
@@ -279,11 +275,11 @@ func TestClient_GetAccountMetrics(t *testing.T) {
 		metrics, err := client.GetAccountMetrics(context.Background())
 		require.NoError(t, err)
 		assert.NotNil(t, metrics)
-		assert.Equal(t, int64(15595), metrics.CoreRequestCount)
-		assert.Equal(t, int64(1000000), metrics.CoreRequestLimit)
-		assert.Equal(t, 1.5595, metrics.CoreUsagePercent)
-		assert.True(t, metrics.GeoEnabled)
+		assert.Equal(t, int64(15595), metrics.RequestCount)
+		assert.Equal(t, int64(1000000), metrics.RequestLimit)
+		assert.Equal(t, 1.5595, metrics.UsagePercent)
 		assert.True(t, metrics.IsActive)
+		assert.Equal(t, "Contact support@zip.tax to modify your account", metrics.Message)
 	})
 }
 

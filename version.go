@@ -5,4 +5,4 @@ package ziptax
 //   - MAJOR version for incompatible API changes
 //   - MINOR version for added functionality in a backwards compatible manner
 //   - PATCH version for backwards compatible bug fixes
-const Version = "0.2.3-beta"
+const Version = "0.3.0-beta"

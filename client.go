@@ -215,7 +215,11 @@ func (c *Client) GetSalesTaxByGeoLocation(ctx context.Context, lat, lng string, 
 	return &response, nil
 }
 
-// GetAccountMetrics returns account metrics related to sales and use tax.
+// GetAccountMetrics returns account metrics from the v6.0 endpoint, reporting a
+// single combined request counter against the account's limit.
+//
+// For usage broken down per entitlement (core tax lookups, geocoding, and merchant
+// requests), use GetDetailedAccountMetrics.
 //
 // Example:
 //
@@ -224,7 +228,7 @@ func (c *Client) GetSalesTaxByGeoLocation(ctx context.Context, lat, lng string, 
 //	if err != nil {
 //		return fmt.Errorf("failed to get account metrics: %w", err)
 //	}
-//	fmt.Printf("Core usage: %.2f%%\n", metrics.CoreUsagePercent)
+//	fmt.Printf("Usage: %.2f%%\n", metrics.UsagePercent)
 func (c *Client) GetAccountMetrics(ctx context.Context) (*models.V60AccountMetrics, error) {
 	var metrics models.V60AccountMetrics
 	if err := c.httpClient.Get(ctx, "/account/v60/metrics", nil, &metrics); err != nil {
@@ -420,6 +424,12 @@ func (c *Client) RecommendProductCode(ctx context.Context, query string) (*model
 // CreateOrder creates an order in TaxCloud for order management and tax filing.
 // This function requires TaxCloud credentials to be configured during client initialization.
 //
+// Deprecated: use CreateMerchantOrder. This function calls TaxCloud directly with a
+// connection ID and TaxCloud API key configured on the client, a path no longer covered
+// by the ZipTax API documentation. CreateMerchantOrder reaches TaxCloud through the
+// ZipTax API using only the ZipTax API key, addressing merchants by ID.
+// See the Migration section of the README.
+//
 // Example:
 //
 //	ctx := context.Background()
@@ -494,6 +504,10 @@ func (c *Client) CreateOrder(ctx context.Context, request *models.CreateOrderReq
 // GetOrder retrieves a specific order by its ID from TaxCloud.
 // This function requires TaxCloud credentials to be configured during client initialization.
 //
+// Deprecated: use GetMerchantOrder. This function calls TaxCloud directly with a
+// connection ID and TaxCloud API key configured on the client, a path no longer covered
+// by the ZipTax API documentation. See the Migration section of the README.
+//
 // Example:
 //
 //	ctx := context.Background()
@@ -528,6 +542,10 @@ func (c *Client) GetOrder(ctx context.Context, orderID string) (*models.OrderRes
 // UpdateOrder updates an existing order's completedDate in TaxCloud.
 // Use this endpoint to change when an order was shipped/completed.
 // This function requires TaxCloud credentials to be configured during client initialization.
+//
+// Deprecated: use UpdateMerchantOrder. This function calls TaxCloud directly with a
+// connection ID and TaxCloud API key configured on the client, a path no longer covered
+// by the ZipTax API documentation. See the Migration section of the README.
 //
 // Example:
 //
@@ -576,6 +594,13 @@ func (c *Client) UpdateOrder(ctx context.Context, orderID string, request *model
 // An order can only be refunded once, regardless of whether the order is partially or fully refunded.
 // This function requires TaxCloud credentials to be configured during client initialization.
 //
+// This call is never retried automatically, whatever WithMaxRetries is set to,
+// because a repeated submission records a duplicate refund.
+//
+// Deprecated: use CreateMerchantRefund. This function calls TaxCloud directly with a
+// connection ID and TaxCloud API key configured on the client, a path no longer covered
+// by the ZipTax API documentation. See the Migration section of the README.
+//
 // Example (partial refund):
 //
 //	ctx := context.Background()
@@ -621,9 +646,10 @@ func (c *Client) RefundOrder(ctx context.Context, orderID string, request *model
 		"X-API-Key": c.config.TaxCloudAPIKey,
 	}
 
-	// Make the POST request to TaxCloud API
+	// Make the POST request to TaxCloud API. Not retried: a repeated submission
+	// records a second refund, which the caller cannot detect from the error.
 	var response []models.RefundTransactionResponse
-	if err := c.httpClient.Post(ctx, c.config.TaxCloudBaseURL, path, headers, request, &response); err != nil {
+	if err := c.httpClient.PostOnce(ctx, c.config.TaxCloudBaseURL, path, headers, request, &response); err != nil {
 		return nil, wrapError("failed to refund order", err)
 	}
 
@@ -638,6 +664,10 @@ func (c *Client) RefundOrder(ctx context.Context, orderID string, request *model
 // filing. To set a completed date on the order, use UpdateOrder after creation.
 //
 // This function requires TaxCloud credentials to be configured during client initialization.
+//
+// Deprecated: use CreateMerchantOrderFromCart. This function calls TaxCloud directly with a
+// connection ID and TaxCloud API key configured on the client, a path no longer covered
+// by the ZipTax API documentation. See the Migration section of the README.
 //
 // Example:
 //

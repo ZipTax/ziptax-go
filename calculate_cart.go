@@ -38,6 +38,13 @@ type CalculateCartResult = models.CalculateCartResult
 //
 // The input contract (CalculateCartRequest) is the same regardless of which backend is used.
 //
+// The TaxCloud routing branch is deprecated. Calling TaxCloud directly with a connection ID
+// and TaxCloud API key configured on the client is no longer covered by the ZipTax API
+// documentation. Use CalculateMerchantCart instead: it serves both compliance models through
+// the ZipTax API using only the ZipTax API key, and its cart IDs can be captured as orders.
+// The ZipTax branch of this function (no TaxCloud credentials configured) is not deprecated.
+// See the Migration section of the README.
+//
 // Example (ZipTax):
 //
 //	ctx := context.Background()

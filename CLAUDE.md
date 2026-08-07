@@ -158,21 +158,40 @@ internal/http/
 
 ```
 ziptax-go/
-├── client.go              # Main client and ZipTax API methods
-├── config.go              # Configuration and validation
-├── options.go             # Functional options
-├── errors.go              # Error types and sentinels
+├── client.go                  # Main client and ZipTax rate/account/TIC methods
+├── calculate_cart.go          # Cart tax calculation (ZipTax + deprecated TaxCloud routing)
+├── merchant.go                # Merchant Management (create/update/delete/get/list, credentials)
+├── merchant_transactions.go   # Merchant carts, orders, refunds, exemption certificates
+├── system.go                  # TIC catalog, JSON Schema, health, metadata, detailed metrics
+├── config.go                  # Configuration and validation
+├── options.go                 # Functional options
+├── errors.go                  # Error types and sentinels
+├── version.go                 # SDK version constant
 ├── models/
-│   ├── v60.go            # ZipTax API models
-│   └── taxcloud_orders.go # TaxCloud API models
+│   ├── v60_*.go              # ZipTax rate models
+│   ├── account.go            # V60AccountMetrics and AccountMetrics
+│   ├── cart.go               # Shared cart calculation models
+│   ├── product_codes.go      # TIC search and recommendation models
+│   ├── merchant.go           # Merchant Management models
+│   ├── merchant_cart.go      # Merchant cart calculation models
+│   ├── merchant_orders.go    # Merchant order and refund models
+│   ├── merchant_certificates.go # Exemption certificate models
+│   ├── system.go             # Health, metadata, and TIC catalog models
+│   ├── taxcloud_cart.go      # Deprecated direct-TaxCloud cart models
+│   └── taxcloud_orders.go    # Deprecated direct-TaxCloud order models
 ├── internal/
-│   ├── http/             # HTTP client implementation
-│   └── validation/       # Input validation
-├── examples/             # Usage examples
+│   ├── http/                 # HTTP client implementation
+│   └── validation/           # Input validation
+├── examples/                 # Usage examples
 ├── docs/
-│   └── spec.yaml        # API specification
-└── README.md            # User documentation
+│   └── spec.yaml            # API specification
+└── README.md                # User documentation
 ```
+
+**Which API a file talks to:** everything except `models/taxcloud_*.go` and the
+deprecated functions in `client.go` targets the ZipTax API at `api.zip-tax.com`,
+authenticated with the ZipTax API key. Merchant endpoints reach TaxCloud
+server-side, so the SDK never needs TaxCloud credentials for them.
 
 ### Naming Conventions
 
@@ -407,6 +426,18 @@ When extending this SDK with AI assistance:
 ## Version History
 
 See [CHANGELOG.md](./CHANGELOG.md) for detailed release notes.
+
+### v0.3.0-beta (Merchant Management)
+- Merchant Management: CreateMerchant, UpdateMerchant, DeleteMerchant, GetMerchant, ListMerchants
+- Merchant credentials: SetMerchantCredentials, DeleteMerchantCredentials (credentials/get is undocumented and deliberately not exposed)
+- Merchant Transactions: CalculateMerchantCart, CreateMerchantOrder, CreateMerchantOrderFromCart, GetMerchantOrder, UpdateMerchantOrder, CreateMerchantRefund
+- Exemption certificates: CreateMerchantCertificate, GetMerchantCertificate, ListMerchantCertificates, DeleteMerchantCertificate
+- Reference data and system: GetTICCodes, GetTICSearchSchema, GetHealth, GetSystemMetadata, GetDetailedAccountMetrics
+- Two compliance models: MerchantTypeTaxCloud (default) and MerchantTypeSelfManaged; only cart calculation is available to self-managed merchants
+- Fixed V60AccountMetrics, which declared the unversioned endpoint's core/geo fields and so never populated
+- Direct TaxCloud order functions and TaxCloud client options deprecated in favor of the merchant endpoints
+- Merchant management example in examples/merchant_management/
+- Test coverage: 91.4% root, 100% internal/validation
 
 ### v0.2.3-beta (Product Code Search)
 - SearchProductCodes for searching TICs by natural language description
