@@ -66,6 +66,7 @@ func (c *Client) CalculateMerchantCart(ctx context.Context, request *models.Merc
 		lineItems := make([]validation.MerchantCartLineItemInput, 0, len(item.LineItems))
 		for _, li := range item.LineItems {
 			lineItems = append(lineItems, validation.MerchantCartLineItemInput{
+				Index:    li.Index,
 				ItemID:   li.ItemID,
 				Price:    li.Price,
 				Quantity: li.Quantity,
@@ -178,6 +179,7 @@ func (c *Client) CreateMerchantOrder(ctx context.Context, request *models.Mercha
 	lineItems := make([]validation.MerchantCartLineItemInput, 0, len(request.LineItems))
 	for _, li := range request.LineItems {
 		lineItems = append(lineItems, validation.MerchantCartLineItemInput{
+			Index:    li.Index,
 			ItemID:   li.ItemID,
 			Price:    li.Price,
 			Quantity: li.Quantity,

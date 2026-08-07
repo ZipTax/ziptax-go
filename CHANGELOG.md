@@ -65,6 +65,14 @@ response shapes on those endpoints may change before general availability.
   the real API error was replaced by a confusing transport error. The body is now
   rewound from `Request.GetBody` before each attempt. This affected every retried
   POST and PATCH; GET was unaffected.
+- **Line-item indices are now validated client-side.** `MerchantCartLineItemInput`
+  omitted `Index`, so the validator never checked it despite the models
+  documenting it as required and unique. Callers could send a cart or order whose
+  line items all carried the zero value, and only find out after a round trip.
+  `CalculateMerchantCart` and `CreateMerchantOrder` now reject an index outside
+  0-500 or repeated within the same cart or order, before sending. Uniqueness is
+  scoped per cart, so separate carts in one request may reuse indices, and gaps
+  are allowed since the API requires uniqueness rather than contiguity.
 - **Non-idempotent operations are no longer retried.** With retries enabled, a
   transport error or 5xx on a refund could resubmit it and record a duplicate,
   with nothing in the returned error to indicate it. These now make exactly one

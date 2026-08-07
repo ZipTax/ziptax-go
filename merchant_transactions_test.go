@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -642,4 +643,111 @@ func TestClient_DeleteMerchantCertificate(t *testing.T) {
 		_, err := newTestClient(t, "https://example.invalid").DeleteMerchantCertificate(context.Background(), testMerchantID, "")
 		assert.Error(t, err)
 	})
+}
+
+// TestLineItemIndicesAreValidatedBeforeSending pins that invalid indices are
+// rejected locally. Previously the validator ignored Index entirely, so these
+// payloads were sent and only rejected by the API after a round trip.
+func TestLineItemIndicesAreValidatedBeforeSending(t *testing.T) {
+	cartWith := func(items []models.MerchantCartLineItem) func(context.Context, *Client) error {
+		return func(ctx context.Context, c *Client) error {
+			req := validMerchantCartRequest()
+			req.Items[0].LineItems = items
+			_, err := c.CalculateMerchantCart(ctx, req)
+			return err
+		}
+	}
+	orderWith := func(items []models.MerchantOrderLineItem) func(context.Context, *Client) error {
+		return func(ctx context.Context, c *Client) error {
+			req := validMerchantOrderRequest()
+			req.LineItems = items
+			_, err := c.CreateMerchantOrder(ctx, req)
+			return err
+		}
+	}
+
+	tests := []struct {
+		name    string
+		call    func(context.Context, *Client) error
+		wantErr string
+	}{
+		{
+			name: "cart duplicate index",
+			call: cartWith([]models.MerchantCartLineItem{
+				{Index: 0, ItemID: "item-1", Price: 10, Quantity: 1},
+				{Index: 0, ItemID: "item-2", Price: 20, Quantity: 1},
+			}),
+			wantErr: "each line item must have a unique index",
+		},
+		{
+			name: "cart negative index",
+			call: cartWith([]models.MerchantCartLineItem{
+				{Index: -1, ItemID: "item-1", Price: 10, Quantity: 1},
+			}),
+			wantErr: "index must be between 0 and 500",
+		},
+		{
+			name: "cart index above the maximum",
+			call: cartWith([]models.MerchantCartLineItem{
+				{Index: 501, ItemID: "item-1", Price: 10, Quantity: 1},
+			}),
+			wantErr: "index must be between 0 and 500",
+		},
+		{
+			name: "order duplicate index",
+			call: orderWith([]models.MerchantOrderLineItem{
+				{Index: 4, ItemID: "item-1", Price: 10, Quantity: 1, Tax: models.Tax{Amount: 1, Rate: 0.1}},
+				{Index: 4, ItemID: "item-2", Price: 20, Quantity: 1, Tax: models.Tax{Amount: 2, Rate: 0.1}},
+			}),
+			wantErr: "each line item must have a unique index",
+		},
+		{
+			name: "order negative index",
+			call: orderWith([]models.MerchantOrderLineItem{
+				{Index: -3, ItemID: "item-1", Price: 10, Quantity: 1, Tax: models.Tax{Amount: 1, Rate: 0.1}},
+			}),
+			wantErr: "index must be between 0 and 500",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var hits int32
+			server := countingServer(t, http.StatusOK, &hits)
+			defer server.Close()
+
+			err := tt.call(context.Background(), newTestClient(t, server.URL))
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+
+			var validationErr *ValidationError
+			assert.ErrorAs(t, err, &validationErr, "want a local ValidationError, not an API error")
+			assert.Zero(t, atomic.LoadInt32(&hits),
+				"the request should be rejected locally, without reaching the server")
+		})
+	}
+}
+
+// TestNonContiguousIndicesAreAccepted guards against over-strict validation:
+// the API requires uniqueness within a cart, not a gapless 0..n-1 run.
+func TestNonContiguousIndicesAreAccepted(t *testing.T) {
+	var hits int32
+	server := countingServer(t, http.StatusOK, &hits)
+	defer server.Close()
+
+	req := validMerchantCartRequest()
+	req.Items[0].LineItems = []models.MerchantCartLineItem{
+		{Index: 0, ItemID: "item-1", Price: 10, Quantity: 1},
+		{Index: 9, ItemID: "item-2", Price: 20, Quantity: 1},
+		{Index: 250, ItemID: "item-3", Price: 30, Quantity: 1},
+	}
+
+	// countingServer replies 200 with an error-shaped body, so decoding yields an
+	// empty response rather than an error. What matters is that validation let it
+	// through to the transport at all.
+	_, _ = newTestClient(t, server.URL).CalculateMerchantCart(context.Background(), req)
+
+	assert.Equal(t, int32(1), atomic.LoadInt32(&hits),
+		"non-contiguous but unique indices should pass validation and be sent")
 }

@@ -18,6 +18,10 @@ const (
 
 	// MaxReasonDescriptionLength is the longest exemption reason description the API accepts.
 	MaxReasonDescriptionLength = 20
+
+	// MaxLineItemIndex is the highest line-item index the API accepts on a cart
+	// or order request.
+	MaxLineItemIndex = 500
 )
 
 // ValidateMerchantID validates that a merchant identifier is present.
@@ -94,11 +98,50 @@ type MerchantCartItemInput struct {
 	LineItems        []MerchantCartLineItemInput
 }
 
-// MerchantCartLineItemInput holds the fields needed to validate a cart line item.
+// MerchantCartLineItemInput holds the fields needed to validate a cart or order line item.
 type MerchantCartLineItemInput struct {
+	Index    int64
 	ItemID   string
 	Price    float64
 	Quantity float64
+}
+
+// validateLineItems checks the constraints shared by cart and order line items.
+//
+// prefix is the JSON path of the lineItems array, so the caller controls whether
+// errors read "lineItems[0]..." or "items[0].lineItems[0]...".
+//
+// Indices must fall in [0, MaxLineItemIndex] and be unique within the array.
+// They need not be contiguous: the API describes index as a zero-based position
+// and requires uniqueness, but does not reject gaps, so neither does this.
+func validateLineItems(prefix string, items []MerchantCartLineItemInput) error {
+	if len(items) == 0 {
+		return fmt.Errorf("%s must contain at least 1 item", prefix)
+	}
+
+	indexFirstSeenAt := make(map[int64]int, len(items))
+	for i, li := range items {
+		if li.ItemID == "" {
+			return fmt.Errorf("%s[%d].itemId is required", prefix, i)
+		}
+		if li.Price < 0 {
+			return fmt.Errorf("%s[%d].price must not be negative, got %v", prefix, i, li.Price)
+		}
+		if li.Quantity <= 0 {
+			return fmt.Errorf("%s[%d].quantity must be greater than 0, got %v", prefix, i, li.Quantity)
+		}
+		if li.Index < 0 || li.Index > MaxLineItemIndex {
+			return fmt.Errorf("%s[%d].index must be between 0 and %d, got %d",
+				prefix, i, MaxLineItemIndex, li.Index)
+		}
+		if first, duplicate := indexFirstSeenAt[li.Index]; duplicate {
+			return fmt.Errorf("%s[%d].index %d duplicates %s[%d].index; each line item must have a unique index",
+				prefix, i, li.Index, prefix, first)
+		}
+		indexFirstSeenAt[li.Index] = i
+	}
+
+	return nil
 }
 
 // ValidateMerchantCartRequest validates the input for a CalculateMerchantCart request.
@@ -131,19 +174,10 @@ func ValidateMerchantCartRequest(input *MerchantCartInput) error {
 			return err
 		}
 
-		if len(cart.LineItems) == 0 {
-			return fmt.Errorf("items[%d].lineItems must contain at least 1 item", i)
-		}
-		for j, li := range cart.LineItems {
-			if li.ItemID == "" {
-				return fmt.Errorf("items[%d].lineItems[%d].itemId is required", i, j)
-			}
-			if li.Price < 0 {
-				return fmt.Errorf("items[%d].lineItems[%d].price must not be negative, got %v", i, j, li.Price)
-			}
-			if li.Quantity <= 0 {
-				return fmt.Errorf("items[%d].lineItems[%d].quantity must be greater than 0, got %v", i, j, li.Quantity)
-			}
+		// Indices are unique per cart, not across the whole request, so each
+		// cart is checked on its own.
+		if err := validateLineItems(fmt.Sprintf("items[%d].lineItems", i), cart.LineItems); err != nil {
+			return err
 		}
 	}
 
@@ -242,21 +276,7 @@ func ValidateMerchantCreateOrderRequest(input *MerchantCreateOrderInput) error {
 	if input.CompletedDate == "" {
 		return fmt.Errorf("completedDate is required")
 	}
-	if len(input.LineItems) == 0 {
-		return fmt.Errorf("lineItems must contain at least 1 item")
-	}
-	for i, li := range input.LineItems {
-		if li.ItemID == "" {
-			return fmt.Errorf("lineItems[%d].itemId is required", i)
-		}
-		if li.Price < 0 {
-			return fmt.Errorf("lineItems[%d].price must not be negative, got %v", i, li.Price)
-		}
-		if li.Quantity <= 0 {
-			return fmt.Errorf("lineItems[%d].quantity must be greater than 0, got %v", i, li.Quantity)
-		}
-	}
-	return nil
+	return validateLineItems("lineItems", input.LineItems)
 }
 
 // MerchantCertificateInput holds the fields needed to validate an exemption certificate creation.

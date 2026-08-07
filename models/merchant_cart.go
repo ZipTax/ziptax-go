@@ -90,7 +90,10 @@ type MerchantCart struct {
 // MerchantCartLineItem is a single line item submitted for tax calculation.
 type MerchantCartLineItem struct {
 	// Index is the zero-based position of the item within the cart (required).
-	// Each line item must have a unique index.
+	// It must be between 0 and 500, and unique within the cart. Indices need not
+	// be contiguous. Note the zero value is a valid index, so a cart of several
+	// line items left at their zero value is rejected as duplicated rather than
+	// treated as unset.
 	Index int64 `json:"index"`
 
 	// ItemID is your unique identifier for the line item, e.g. a SKU (required).

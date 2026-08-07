@@ -384,3 +384,128 @@ func assertErrContains(t *testing.T, err error, want string) {
 		t.Errorf("error = %q, want it to contain %q", err.Error(), want)
 	}
 }
+
+// lineItem is a shorthand for building line items in the index tests.
+func lineItem(index int64, id string) MerchantCartLineItemInput {
+	return MerchantCartLineItemInput{Index: index, ItemID: id, Price: 10, Quantity: 1}
+}
+
+func TestValidateMerchantCartRequestIndices(t *testing.T) {
+	tests := []struct {
+		name    string
+		items   []MerchantCartLineItemInput
+		wantErr string
+	}{
+		{
+			name:  "sequential from zero",
+			items: []MerchantCartLineItemInput{lineItem(0, "a"), lineItem(1, "b"), lineItem(2, "c")},
+		},
+		{
+			name: "gaps are allowed: the API requires uniqueness, not contiguity",
+			items: []MerchantCartLineItemInput{
+				lineItem(0, "a"), lineItem(7, "b"), lineItem(40, "c"),
+			},
+		},
+		{
+			name:  "at the maximum",
+			items: []MerchantCartLineItemInput{lineItem(MaxLineItemIndex, "a")},
+		},
+		{
+			name:    "negative index",
+			items:   []MerchantCartLineItemInput{lineItem(-1, "a")},
+			wantErr: "items[0].lineItems[0].index must be between 0 and 500, got -1",
+		},
+		{
+			name:    "index above the maximum",
+			items:   []MerchantCartLineItemInput{lineItem(MaxLineItemIndex+1, "a")},
+			wantErr: "items[0].lineItems[0].index must be between 0 and 500, got 501",
+		},
+		{
+			name:    "duplicate index",
+			items:   []MerchantCartLineItemInput{lineItem(0, "a"), lineItem(0, "b")},
+			wantErr: "items[0].lineItems[1].index 0 duplicates items[0].lineItems[0].index",
+		},
+		{
+			name: "duplicate index further along",
+			items: []MerchantCartLineItemInput{
+				lineItem(0, "a"), lineItem(1, "b"), lineItem(1, "c"),
+			},
+			wantErr: "items[0].lineItems[2].index 1 duplicates items[0].lineItems[1].index",
+		},
+		{
+			name:    "every line item left at the zero value",
+			items:   []MerchantCartLineItemInput{lineItem(0, "a"), lineItem(0, "b"), lineItem(0, "c")},
+			wantErr: "each line item must have a unique index",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := validCartInput()
+			input.Carts[0].LineItems = tt.items
+			assertErrContains(t, ValidateMerchantCartRequest(input), tt.wantErr)
+		})
+	}
+}
+
+// TestIndicesAreScopedPerCart pins that uniqueness is checked within each cart
+// rather than across the whole request: two carts may both use index 0.
+func TestIndicesAreScopedPerCart(t *testing.T) {
+	input := validCartInput()
+	second := input.Carts[0]
+	second.LineItems = []MerchantCartLineItemInput{lineItem(0, "a"), lineItem(1, "b")}
+	input.Carts[0].LineItems = []MerchantCartLineItemInput{lineItem(0, "x"), lineItem(1, "y")}
+	input.Carts = append(input.Carts, second)
+
+	if err := ValidateMerchantCartRequest(input); err != nil {
+		t.Errorf("indices repeated across separate carts should be accepted, got: %v", err)
+	}
+}
+
+// TestSecondCartIndicesAreValidated guards against the per-cart loop checking
+// only the first cart.
+func TestSecondCartIndicesAreValidated(t *testing.T) {
+	input := validCartInput()
+	second := input.Carts[0]
+	second.LineItems = []MerchantCartLineItemInput{lineItem(3, "a"), lineItem(3, "b")}
+	input.Carts = append(input.Carts, second)
+
+	assertErrContains(t, ValidateMerchantCartRequest(input),
+		"items[1].lineItems[1].index 3 duplicates items[1].lineItems[0].index")
+}
+
+func TestValidateMerchantCreateOrderRequestIndices(t *testing.T) {
+	tests := []struct {
+		name    string
+		items   []MerchantCartLineItemInput
+		wantErr string
+	}{
+		{
+			name:  "sequential from zero",
+			items: []MerchantCartLineItemInput{lineItem(0, "a"), lineItem(1, "b")},
+		},
+		{
+			name:    "negative index",
+			items:   []MerchantCartLineItemInput{lineItem(-5, "a")},
+			wantErr: "lineItems[0].index must be between 0 and 500, got -5",
+		},
+		{
+			name:    "index above the maximum",
+			items:   []MerchantCartLineItemInput{lineItem(9000, "a")},
+			wantErr: "lineItems[0].index must be between 0 and 500, got 9000",
+		},
+		{
+			name:    "duplicate index",
+			items:   []MerchantCartLineItemInput{lineItem(2, "a"), lineItem(2, "b")},
+			wantErr: "lineItems[1].index 2 duplicates lineItems[0].index",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := validCreateOrderInput()
+			input.LineItems = tt.items
+			assertErrContains(t, ValidateMerchantCreateOrderRequest(input), tt.wantErr)
+		})
+	}
+}
